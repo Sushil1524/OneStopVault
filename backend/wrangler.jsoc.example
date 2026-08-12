@@ -1,0 +1,20 @@
+//fill d1_database and rename file to wrangler.jsoc
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "onestop-vault-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-02-08",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "vault-db",
+      "database_id": "local-vault-db-id"
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "development"
+  }
+}
