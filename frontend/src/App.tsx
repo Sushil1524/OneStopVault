@@ -5,12 +5,14 @@ import { VaultView } from './components/VaultView.js';
 import { ItemModal } from './components/ItemModal.js';
 import { PasswordGeneratorModal } from './components/PasswordGeneratorModal.js';
 import { BreachCheckModal } from './components/BreachCheckModal.js';
+import { ImportModal } from './components/ImportModal.js';
 
 import { UserSession, VaultItem, SyncState, ItemType, DecryptedPayload } from './types/vault.js';
 import { UnifiedStorage } from './storage/unifiedStorage.js';
 import { WorkerClient } from './api/workerClient.js';
 import { encryptVaultItem, decryptVaultItem } from './crypto/aesGcm.js';
 import { calculateVaultChecksum } from './crypto/checksum.js';
+import { ImportResultItem } from './crypto/importers/importer.js';
 
 export const App: React.FC = () => {
   const [session, setSession] = useState<UserSession | null>(null);
@@ -25,6 +27,7 @@ export const App: React.FC = () => {
   const [onGeneratorSelect, setOnGeneratorSelect] = useState<((pass: string) => void) | undefined>(undefined);
 
   const [isBreachAuditOpen, setIsBreachAuditOpen] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
   // Decrypt items in memory using session vaultKey
   const decryptAllItems = useCallback(
@@ -173,6 +176,46 @@ export const App: React.FC = () => {
     }
   };
 
+  // Bulk Import Handlers
+  const handleImportItems = async (importedItems: ImportResultItem[]) => {
+    if (!session) return;
+    const now = Date.now();
+    const newVaultItems: VaultItem[] = [];
+
+    for (const item of importedItems) {
+      const payload: DecryptedPayload = {
+        name: item.name,
+        username: item.username,
+        password: item.password,
+        url: item.url,
+        notes: item.notes,
+        totpSecret: item.totpSecret,
+        tags: item.tags,
+      };
+
+      const { ciphertext, iv } = await encryptVaultItem(payload, session.vaultKey);
+      newVaultItems.push({
+        id: crypto.randomUUID(),
+        itemType: item.itemType || 'login',
+        ciphertext,
+        iv,
+        createdAt: now,
+        updatedAt: now,
+        decrypted: payload,
+      });
+    }
+
+    const updatedList = [...newVaultItems, ...items];
+    setItems(updatedList);
+
+    // Save to LocalStorage cache
+    const localChecksum = await calculateVaultChecksum(updatedList);
+    UnifiedStorage.saveLocalVault(updatedList, localChecksum, 1);
+
+    // Trigger Cloudflare D1 batch sync
+    await performSync(session, updatedList);
+  };
+
   // Delete Vault Item
   const handleDeleteItem = async (id: string) => {
     if (!session) return;
@@ -217,6 +260,7 @@ export const App: React.FC = () => {
         onLock={handleLock}
         onOpenGenerator={() => openGeneratorModal()}
         onOpenBreachAudit={() => setIsBreachAuditOpen(true)}
+        onOpenImport={() => setIsImportModalOpen(true)}
         onManualSync={() => session && performSync(session, items)}
       />
 
@@ -257,6 +301,12 @@ export const App: React.FC = () => {
         isOpen={isBreachAuditOpen}
         onClose={() => setIsBreachAuditOpen(false)}
         items={items}
+      />
+
+      <ImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSuccess={handleImportItems}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, KeyRound, Lock, ShieldAlert } from 'lucide-react';
+import { Shield, KeyRound, Lock, ShieldAlert, Upload } from 'lucide-react';
 import { SyncStatusBadge } from './SyncStatusBadge.js';
 import { SyncState } from '../types/vault.js';
 
@@ -9,6 +9,7 @@ interface NavbarProps {
   onLock: () => void;
   onOpenGenerator: () => void;
   onOpenBreachAudit: () => void;
+  onOpenImport?: () => void;
   onManualSync: () => void;
 }
 
@@ -18,6 +19,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLock,
   onOpenGenerator,
   onOpenBreachAudit,
+  onOpenImport,
   onManualSync,
 }) => {
   return (
@@ -89,6 +91,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           {userEmail && (
             <>
               <SyncStatusBadge state={syncState} onManualSync={onManualSync} />
+
+              {onOpenImport && (
+                <button
+                  onClick={onOpenImport}
+                  className="btn btn-secondary"
+                  style={{ padding: '8px 14px', fontSize: '0.85rem' }}
+                  title="Import credentials & 2FA keys from Chrome, Bitwarden, 2FAS, Aegis"
+                >
+                  <Upload size={16} />
+                  <span className="hide-mobile">Import</span>
+                </button>
+              )}
 
               <button
                 onClick={onOpenBreachAudit}
