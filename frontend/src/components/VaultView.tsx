@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus, KeyRound, FileText, Star, ShieldCheck, Filter } from 'lucide-react';
+import { Search, Plus, KeyRound, FileText, Star, ShieldCheck, Filter, Tag } from 'lucide-react';
 import { VaultItem } from '../types/vault.js';
 import { VaultItemCard } from './VaultItemCard.js';
 
@@ -10,33 +10,46 @@ interface VaultViewProps {
   onToggleFavorite: (item: VaultItem) => void;
 }
 
-// Sidebar category definitions — keeps the nav list DRY
+// Sidebar category definitions
 const CATEGORIES = [
-  { id: 'all',       label: 'All Items',     icon: <Filter size={16} />,              color: 'var(--accent-primary)' },
+  { id: 'all',       label: 'All Items',     icon: <Filter size={16} />,   color: 'var(--accent-primary)' },
   { id: 'favorites', label: 'Favorites',     icon: <Star size={16} color="var(--accent-amber)" />, color: 'var(--accent-amber)' },
-  { id: 'login',     label: 'Logins',        icon: <KeyRound size={16} />,             color: 'var(--accent-primary)' },
-  { id: 'note',      label: 'Secure Notes',  icon: <FileText size={16} />,             color: 'var(--accent-primary)' },
+  { id: 'login',     label: 'Logins',        icon: <KeyRound size={16} />, color: 'var(--accent-primary)' },
+  { id: 'note',      label: 'Secure Notes',  icon: <FileText size={16} />, color: 'var(--accent-primary)' },
 ];
 
 export const VaultView: React.FC<VaultViewProps> = ({ items, onAddNew, onEditItem, onToggleFavorite }) => {
   const [activeCategory, setActiveCategory] = useState('all');
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Apply category + search filters
+  // Collect all unique tags from items
+  const allTags = Array.from(
+    new Set(items.flatMap(item => item.decrypted?.tags || []))
+  ).sort();
+
+  // Apply category + tag + search filters
   const filteredItems = items.filter(item => {
     const d = item.decrypted;
 
+    // Category filter
     if (activeCategory === 'favorites' && !d?.favorite) return false;
     if (activeCategory === 'login' && item.itemType !== 'login') return false;
     if (activeCategory === 'note' && item.itemType !== 'note') return false;
 
+    // Active Tag filter
+    if (activeTag && (!d?.tags || !d.tags.includes(activeTag))) return false;
+
+    // Search query filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
+      const tagMatch = d?.tags?.some(t => t.toLowerCase().includes(q));
       return (
         d?.name?.toLowerCase().includes(q) ||
         d?.username?.toLowerCase().includes(q) ||
         d?.url?.toLowerCase().includes(q) ||
-        d?.notes?.toLowerCase().includes(q)
+        d?.notes?.toLowerCase().includes(q) ||
+        tagMatch
       );
     }
 
@@ -65,15 +78,18 @@ export const VaultView: React.FC<VaultViewProps> = ({ items, onAddNew, onEditIte
 
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {CATEGORIES.map(cat => {
-              const isActive = activeCategory === cat.id;
+              const isActive = activeCategory === cat.id && !activeTag;
               return (
                 <button
                   key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
+                  onClick={() => {
+                    setActiveCategory(cat.id);
+                    setActiveTag(null);
+                  }}
                   className={`btn ${isActive ? 'btn-secondary' : 'btn-ghost'}`}
                   style={{
                     justifyContent: 'space-between',
-                    background: isActive ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                    background: isActive ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
                     borderColor: isActive ? cat.color : 'transparent',
                   }}
                 >
@@ -87,21 +103,68 @@ export const VaultView: React.FC<VaultViewProps> = ({ items, onAddNew, onEditIte
               );
             })}
           </nav>
+
+          {/* Tags Sidebar Section */}
+          {allTags.length > 0 && (
+            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Tag size={12} /> TAGS
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {allTags.map(tag => {
+                  const isSelected = activeTag === tag;
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => {
+                        setActiveTag(isSelected ? null : tag);
+                      }}
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '12px',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        border: isSelected ? '1px solid #ffffff' : '1px solid var(--border-color)',
+                        background: isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.05)',
+                        color: isSelected ? '#000000' : 'var(--text-muted)',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      #{tag}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* ── Main Content ──────────────────────────────────── */}
         <main style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* Search bar */}
-          <div style={{ position: 'relative' }}>
-            <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
-            <input
-              type="text"
-              className="input-field"
-              style={{ paddingLeft: '42px' }}
-              placeholder="Search by name, username or URL…"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
+          {/* Search bar & Tag filter badge */}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
+              <input
+                type="text"
+                className="input-field"
+                style={{ paddingLeft: '42px' }}
+                placeholder="Search by name, username, URL, or #tag…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            {activeTag && (
+              <button
+                onClick={() => setActiveTag(null)}
+                className="btn btn-secondary"
+                style={{ fontSize: '0.8rem', padding: '10px 14px' }}
+              >
+                Tag: #{activeTag} ✕
+              </button>
+            )}
           </div>
 
           {/* Item grid or empty state */}
@@ -115,12 +178,12 @@ export const VaultView: React.FC<VaultViewProps> = ({ items, onAddNew, onEditIte
             <div className="glass-panel" style={{ padding: '48px 24px', textAlign: 'center' }}>
               <ShieldCheck size={48} color="var(--accent-primary)" style={{ marginBottom: '16px', opacity: 0.7 }} />
               <h3 style={{ marginBottom: '8px' }}>
-                {searchQuery ? 'No results found' : 'Your vault is empty'}
+                {searchQuery || activeTag ? 'No items match your filter' : 'Your vault is empty'}
               </h3>
               <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                {searchQuery ? 'Try a different search term.' : 'Add your first login or secure note to get started.'}
+                {searchQuery || activeTag ? 'Try clearing search or tag filters.' : 'Add your first login or secure note to get started.'}
               </p>
-              {!searchQuery && (
+              {!searchQuery && !activeTag && (
                 <button onClick={onAddNew} className="btn btn-primary">
                   <Plus size={16} /> Add Your First Item
                 </button>

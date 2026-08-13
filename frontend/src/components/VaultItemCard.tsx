@@ -166,10 +166,33 @@ export const VaultItemCard: React.FC<VaultItemCardProps> = ({ item, onEdit, onTo
         </p>
       )}
 
-      {/* ── Card Footer: type badge + edit button ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
-        <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>{item.itemType}</span>
-        <button onClick={() => onEdit(item)} className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: '0.8rem' }}>Edit</button>
+      {/* ── Card Footer: tags + type badge + edit button ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: 'auto', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
+        {payload.tags && payload.tags.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+            {payload.tags.map((tag) => (
+              <span
+                key={tag}
+                style={{
+                  fontSize: '0.65rem',
+                  fontWeight: 600,
+                  padding: '2px 7px',
+                  borderRadius: '10px',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  color: 'var(--text-muted)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                }}
+              >
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>{item.itemType}</span>
+          <button onClick={() => onEdit(item)} className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: '0.8rem' }}>Edit</button>
+        </div>
       </div>
     </div>
   );

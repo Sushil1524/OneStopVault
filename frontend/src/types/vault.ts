@@ -1,4 +1,4 @@
-// Vault item types — only login (with optional 2FA) is supported
+// Vault item types — login (with optional 2FA) or secure note
 export type ItemType = 'login' | 'note';
 
 // The decrypted contents of a vault item (stored in browser RAM only)
@@ -8,7 +8,8 @@ export interface DecryptedPayload {
   password?: string;
   url?: string;
   notes?: string;
-  totpSecret?: string; // Base32 secret for TOTP 2FA codes (e.g. from Google Authenticator)
+  totpSecret?: string; // Base32 secret for TOTP 2FA codes
+  tags?: string[];     // Category tags (e.g. Social, Work, Finance, Personal)
   favorite?: boolean;
 }
 
@@ -35,7 +36,7 @@ export interface UserSession {
   token: string;
   user: { id: string; email: string; salt: string };
   vaultKey: CryptoKey;   // AES-256-GCM key — purged from RAM on lock
-  authKeyHash: string;   // Hash sent to server for authentication (not the password)
+  authKeyHash: string;   // Hash sent to server for authentication
 }
 
 // Describes the live sync state shown in the navbar badge
