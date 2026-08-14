@@ -36,6 +36,7 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -43,6 +44,7 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-main);
   min-height: 100vh;
+  min-height: 100dvh;
   line-height: 1.5;
   overflow-x: hidden;
   background-image: 
@@ -52,6 +54,7 @@ body {
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -81,9 +84,9 @@ h1, h2, h3, h4, h5, h6 {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.glass-card:hover {
+.glass-card:hover, .glass-card:active {
   border-color: var(--border-glow);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: 0 12px 24px -10px rgba(255, 255, 255, 0.15);
 }
 
@@ -94,14 +97,18 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: center;
   gap: 8px;
   padding: 10px 18px;
+  min-height: 40px;
   font-family: var(--font-sans);
   font-size: 0.9rem;
   font-weight: 600;
   border-radius: var(--radius-md);
   border: none;
   cursor: pointer;
+  touch-action: manipulation;
   transition: all 0.2s ease;
   text-decoration: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .btn-primary {
@@ -110,7 +117,7 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 4px 14px rgba(255, 255, 255, 0.2);
 }
 
-.btn-primary:hover {
+.btn-primary:hover, .btn-primary:active {
   background: #e4e4e7;
   color: #000000;
   transform: translateY(-1px);
@@ -123,7 +130,7 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid var(--border-color);
 }
 
-.btn-secondary:hover {
+.btn-secondary:hover, .btn-secondary:active {
   background: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.3);
 }
@@ -133,7 +140,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-muted);
 }
 
-.btn-ghost:hover {
+.btn-ghost:hover, .btn-ghost:active {
   color: var(--text-main);
   background: rgba(255, 255, 255, 0.08);
 }
@@ -144,7 +151,7 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid rgba(244, 63, 94, 0.3);
 }
 
-.btn-danger:hover {
+.btn-danger:hover, .btn-danger:active {
   background: rgba(244, 63, 94, 0.22);
 }
 
@@ -171,12 +178,13 @@ h1, h2, h3, h4, h5, h6 {
 .input-field {
   width: 100%;
   padding: 12px 14px;
+  min-height: 44px;
   background: rgba(18, 18, 20, 0.9);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   color: var(--text-main);
   font-family: var(--font-sans);
-  font-size: 0.95rem;
+  font-size: 16px; /* Prevents auto-zoom on iOS/Android Chrome focus */
   outline: none;
   transition: all 0.2s ease;
 }
@@ -250,8 +258,8 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -266,3 +274,133 @@ h1, h2, h3, h4, h5, h6 {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.4);
 }
+
+/* ── Mobile & Android Touch Responsive Styles ── */
+
+/* Visible on desktop, hidden on mobile */
+.hide-mobile {
+  display: inline-flex;
+}
+
+/* Hidden on desktop, visible on mobile */
+.show-mobile-flex {
+  display: none;
+}
+
+/* Desktop layout wrapper — shown on desktop, hidden on mobile */
+.desktop-only {
+  display: grid;
+}
+
+/* Mobile content — hidden on desktop, shown on mobile */
+.mobile-content {
+  display: none;
+  padding: 10px 12px;
+  flex-direction: column;
+}
+
+/* ── Mobile FAB (Floating Action Button) ── */
+.mobile-fab {
+  position: fixed;
+  bottom: 20px;
+  right: 16px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: none;
+  display: none; /* hidden on desktop */
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(255,255,255,0.2);
+  z-index: 50;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.15s ease;
+}
+.mobile-fab:active { transform: scale(0.9); }
+
+/* ── Mobile category tab bar ── */
+.mobile-category-bar {
+  display: none;
+  align-items: stretch;
+  background: rgba(9,9,11,0.97);
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 55px;
+  z-index: 30;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.mobile-category-bar::-webkit-scrollbar { display: none; }
+
+.mobile-cat-tab {
+  flex: 1;
+  min-width: 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 9px 6px 7px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  touch-action: manipulation;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.mobile-cat-tab[data-active='true'] {
+  color: #ffffff;
+  border-bottom-color: #ffffff;
+  background: rgba(255,255,255,0.04);
+}
+.mobile-cat-tab-icon { line-height: 1; }
+.mobile-cat-tab-label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.01em; }
+.mobile-cat-tab-count {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.12);
+  color: var(--text-muted);
+  min-width: 16px;
+  text-align: center;
+}
+.mobile-cat-tab[data-active='true'] .mobile-cat-tab-count {
+  background: rgba(255,255,255,0.25);
+  color: #fff;
+}
+
+/* ── Mobile Breakpoint ── */
+@media (max-width: 768px) {
+  /* Hide desktop-only elements */
+  .hide-mobile    { display: none !important; }
+  .desktop-only   { display: none !important; }
+
+  /* Show mobile-only elements */
+  .show-mobile-flex       { display: flex !important; }
+  .mobile-category-bar    { display: flex !important; }
+  .mobile-content         { display: flex !important; }
+  .mobile-fab             { display: flex !important; }
+
+  /* Collapse grid to single column */
+  .vault-layout {
+    grid-template-columns: 1fr !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
+  /* Card border radius tweak on narrow screens */
+  .vault-card {
+    border-radius: 12px !important;
+  }
+
+  .glass-panel {
+    border-radius: var(--radius-md) !important;
+  }
+}
+

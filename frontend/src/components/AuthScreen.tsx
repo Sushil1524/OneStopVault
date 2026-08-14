@@ -141,7 +141,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onOpenG
         style={{
           width: '100%',
           maxWidth: '440px',
-          padding: '36px',
+          padding: '28px 20px',
           position: 'relative',
         }}
       >

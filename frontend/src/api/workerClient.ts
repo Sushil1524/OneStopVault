@@ -2,7 +2,7 @@
  * Cloudflare Worker API Client Wrapper
  */
 
-const API_BASE_URL = (import.meta as any).env?.VITE_WORKER_API_URL || 'http://localhost:8787';
+const API_BASE_URL = (import.meta as any).env?.VITE_WORKER_API_URL || 'https://onestop-vault-worker.legalenough.workers.dev';
 
 export class WorkerClient {
   static async register(email: string, authHash: string, salt: string) {

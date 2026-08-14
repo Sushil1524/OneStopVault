@@ -14,18 +14,18 @@ export const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({ state, onManua
         <div
           onClick={onManualSync}
           className="badge badge-success"
-          style={{ cursor: 'pointer' }}
-          title="Local and Cloudflare D1 checksums match perfectly. Click to re-verify."
+          style={{ cursor: 'pointer', padding: '4px 8px' }}
+          title="Local and Cloudflare D1 checksums match. Click to re-verify."
         >
           <CheckCircle2 size={13} />
-          <span>In Sync</span>
+          <span className="hide-mobile">In Sync</span>
         </div>
       );
     case 'SYNCING':
       return (
-        <div className="badge badge-info animate-pulse" title="Synchronizing ciphertext with Cloudflare Worker...">
+        <div className="badge badge-info animate-pulse" style={{ padding: '4px 8px' }} title="Syncing ciphertext with Cloudflare...">
           <RefreshCw size={13} className="animate-spin" />
-          <span>Syncing...</span>
+          <span className="hide-mobile">Syncing...</span>
         </div>
       );
     case 'MISMATCH':
@@ -33,18 +33,18 @@ export const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({ state, onManua
         <div
           onClick={onManualSync}
           className="badge badge-warning animate-pulse"
-          style={{ cursor: 'pointer' }}
-          title="Checksum mismatch detected between local storage and Cloudflare D1. Click to resolve."
+          style={{ cursor: 'pointer', padding: '4px 8px' }}
+          title="Checksum mismatch detected. Click to resolve."
         >
           <AlertTriangle size={13} />
-          <span>Reconciling...</span>
+          <span className="hide-mobile">Reconciling...</span>
         </div>
       );
     case 'OFFLINE':
       return (
-        <div className="badge badge-warning" title="Operating in local offline cache mode.">
+        <div className="badge badge-warning" style={{ padding: '4px 8px' }} title="Operating in offline cache mode.">
           <WifiOff size={13} />
-          <span>Offline Mode</span>
+          <span className="hide-mobile">Offline</span>
         </div>
       );
     case 'ERROR':
@@ -52,11 +52,11 @@ export const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({ state, onManua
         <div
           onClick={onManualSync}
           className="badge badge-danger"
-          style={{ cursor: 'pointer' }}
-          title="Sync error encountered. Click to retry."
+          style={{ cursor: 'pointer', padding: '4px 8px' }}
+          title="Sync error. Click to retry."
         >
           <AlertTriangle size={13} />
-          <span>Sync Retry</span>
+          <span className="hide-mobile">Retry</span>
         </div>
       );
     default:

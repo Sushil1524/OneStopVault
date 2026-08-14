@@ -1,5 +1,5 @@
-import React from 'react';
-import { Shield, KeyRound, Lock, ShieldAlert, Upload } from 'lucide-react';
+import React, { useState } from 'react';
+import { Shield, KeyRound, Lock, ShieldAlert, Upload, Menu, X, RefreshCw } from 'lucide-react';
 import { SyncStatusBadge } from './SyncStatusBadge.js';
 import { SyncState } from '../types/vault.js';
 
@@ -22,124 +22,156 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenImport,
   onManualSync,
 }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
-    <header
-      style={{
-        borderBottom: '1px solid var(--border-color)',
-        background: 'rgba(9, 9, 11, 0.85)',
-        backdropFilter: 'blur(12px)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 40,
-        padding: '12px 24px',
-      }}
-    >
-      <div
+    <>
+      <header
         style={{
-          maxWidth: '1280px',
-          margin: '0 auto',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          borderBottom: '1px solid var(--border-color)',
+          background: 'rgba(9, 9, 11, 0.97)',
+          backdropFilter: 'blur(12px)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+          padding: '10px 16px',
         }}
       >
-        {/* Brand / Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '12px',
-              background: 'var(--gradient-accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 16px rgba(255, 255, 255, 0.2)',
-            }}
-          >
-            <Shield size={22} color="#000" />
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={{ fontSize: '1.25rem', color: 'var(--text-main)', margin: 0, lineHeight: 1 }}>
+        <div
+          style={{
+            maxWidth: '1280px',
+            margin: '0 auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          {/* Brand / Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: '10px',
+                background: 'var(--gradient-accent)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Shield size={18} color="#000" />
+            </div>
+            <div>
+              <h1 style={{ fontSize: '1.05rem', color: 'var(--text-main)', margin: 0, lineHeight: 1.2, fontWeight: 700 }}>
                 OneStop <span style={{ color: 'var(--accent-primary)' }}>Vault</span>
               </h1>
-              <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>
-                Zero-Knowledge
-              </span>
+              <p className="hide-mobile" style={{ fontSize: '0.7rem', color: 'var(--text-dim)', margin: 0 }}>
+                Cloudflare D1 · Web Crypto · Zero-Knowledge
+              </p>
             </div>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', margin: 0 }}>
-              Cloudflare D1 & Worker + Web Crypto
-            </p>
+          </div>
+
+          {/* Desktop nav buttons */}
+          <div className="hide-mobile" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button onClick={onOpenGenerator} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }} title="Password Generator">
+              <KeyRound size={14} /> Generator
+            </button>
+            {userEmail && (
+              <>
+                <SyncStatusBadge state={syncState} onManualSync={onManualSync} />
+                {onOpenImport && (
+                  <button onClick={onOpenImport} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                    <Upload size={14} /> Import
+                  </button>
+                )}
+                <button onClick={onOpenBreachAudit} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                  <ShieldAlert size={14} color="var(--accent-amber)" /> Breach Audit
+                </button>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{userEmail}</span>
+                <button onClick={onLock} className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                  <Lock size={14} /> Lock
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Mobile: sync status + hamburger */}
+          <div className="show-mobile-flex" style={{ alignItems: 'center', gap: '8px' }}>
+            {userEmail && <SyncStatusBadge state={syncState} onManualSync={onManualSync} />}
+            {userEmail && (
+              <button
+                onClick={() => setMenuOpen(v => !v)}
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '10px',
+                  width: '36px',
+                  height: '36px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: '#fff',
+                }}
+                aria-label="Menu"
+              >
+                {menuOpen ? <X size={18} /> : <Menu size={18} />}
+              </button>
+            )}
+            {!userEmail && (
+              <button onClick={onOpenGenerator} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                <KeyRound size={14} />
+              </button>
+            )}
           </div>
         </div>
+      </header>
 
-        {/* Header Action Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Generator button is ALWAYS accessible without logging in */}
-          <button
-            onClick={onOpenGenerator}
-            className="btn btn-secondary"
-            style={{ padding: '8px 14px', fontSize: '0.85rem' }}
-            title="Open Password Generator (No login required)"
-          >
-            <KeyRound size={16} />
-            <span>Generator</span>
+      {/* ── Mobile Slide-down Drawer Menu ── */}
+      {menuOpen && userEmail && (
+        <div
+          className="show-mobile-flex"
+          style={{
+            flexDirection: 'column',
+            background: 'rgba(9, 9, 11, 0.98)',
+            backdropFilter: 'blur(16px)',
+            borderBottom: '1px solid var(--border-color)',
+            padding: '12px 16px',
+            gap: '8px',
+            position: 'sticky',
+            top: '55px',
+            zIndex: 45,
+          }}
+        >
+          {/* User email */}
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', padding: '4px 0 8px', borderBottom: '1px solid var(--border-color)' }}>
+            Signed in as <strong style={{ color: 'var(--text-muted)' }}>{userEmail}</strong>
+          </div>
+
+          <button onClick={() => { onOpenGenerator(); setMenuOpen(false); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 14px', fontSize: '0.875rem' }}>
+            <KeyRound size={16} /> Password Generator
           </button>
 
-          {/* Authenticated user actions */}
-          {userEmail && (
-            <>
-              <SyncStatusBadge state={syncState} onManualSync={onManualSync} />
-
-              {onOpenImport && (
-                <button
-                  onClick={onOpenImport}
-                  className="btn btn-secondary"
-                  style={{ padding: '8px 14px', fontSize: '0.85rem' }}
-                  title="Import credentials & 2FA keys from Chrome, Bitwarden, 2FAS, Aegis"
-                >
-                  <Upload size={16} />
-                  <span className="hide-mobile">Import</span>
-                </button>
-              )}
-
-              <button
-                onClick={onOpenBreachAudit}
-                className="btn btn-secondary"
-                style={{ padding: '8px 14px', fontSize: '0.85rem' }}
-                title="Audit Vault against HaveIBeenPwned Leaks"
-              >
-                <ShieldAlert size={16} color="var(--accent-amber)" />
-                <span className="hide-mobile">Breach Audit</span>
-              </button>
-
-              <div
-                style={{
-                  height: '24px',
-                  width: '1px',
-                  background: 'var(--border-color)',
-                  margin: '0 4px',
-                }}
-              />
-
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }} className="hide-mobile">
-                {userEmail}
-              </div>
-
-              <button
-                onClick={onLock}
-                className="btn btn-danger"
-                style={{ padding: '8px 14px', fontSize: '0.85rem' }}
-                title="Lock Vault and purge keys from browser RAM"
-              >
-                <Lock size={15} />
-                <span>Lock</span>
-              </button>
-            </>
+          {onOpenImport && (
+            <button onClick={() => { onOpenImport(); setMenuOpen(false); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 14px', fontSize: '0.875rem' }}>
+              <Upload size={16} /> Import Passwords
+            </button>
           )}
+
+          <button onClick={() => { onOpenBreachAudit(); setMenuOpen(false); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 14px', fontSize: '0.875rem' }}>
+            <ShieldAlert size={16} color="var(--accent-amber)" /> Breach Audit
+          </button>
+
+          <button onClick={() => { onManualSync(); setMenuOpen(false); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 14px', fontSize: '0.875rem' }}>
+            <RefreshCw size={16} /> Sync Now
+          </button>
+
+          <button onClick={() => { onLock(); setMenuOpen(false); }} className="btn btn-danger" style={{ justifyContent: 'flex-start', padding: '10px 14px', fontSize: '0.875rem' }}>
+            <Lock size={16} /> Lock Vault
+          </button>
         </div>
-      </div>
-    </header>
+      )}
+    </>
   );
 };
