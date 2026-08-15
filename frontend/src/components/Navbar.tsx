@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, KeyRound, Lock, ShieldAlert, Upload, Menu, X, RefreshCw } from 'lucide-react';
+import { Shield, KeyRound, Lock, ShieldAlert, Upload, Download, Menu, X, RefreshCw } from 'lucide-react';
 import { SyncStatusBadge } from './SyncStatusBadge.js';
 import { SyncState } from '../types/vault.js';
 
@@ -10,6 +10,7 @@ interface NavbarProps {
   onOpenGenerator: () => void;
   onOpenBreachAudit: () => void;
   onOpenImport?: () => void;
+  onOpenExport?: () => void;
   onManualSync: () => void;
 }
 
@@ -20,6 +21,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenGenerator,
   onOpenBreachAudit,
   onOpenImport,
+  onOpenExport,
   onManualSync,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -83,6 +85,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {onOpenImport && (
                   <button onClick={onOpenImport} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
                     <Upload size={14} /> Import
+                  </button>
+                )}
+                {onOpenExport && (
+                  <button onClick={onOpenExport} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                    <Download size={14} /> Export
                   </button>
                 )}
                 <button onClick={onOpenBreachAudit} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
@@ -156,6 +163,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           {onOpenImport && (
             <button onClick={() => { onOpenImport(); setMenuOpen(false); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 14px', fontSize: '0.875rem' }}>
               <Upload size={16} /> Import Passwords
+            </button>
+          )}
+
+          {onOpenExport && (
+            <button onClick={() => { onOpenExport(); setMenuOpen(false); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 14px', fontSize: '0.875rem' }}>
+              <Download size={16} /> Export Passwords
             </button>
           )}
 

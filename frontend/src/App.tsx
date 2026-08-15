@@ -6,6 +6,7 @@ import { ItemModal } from './components/ItemModal.js';
 import { PasswordGeneratorModal } from './components/PasswordGeneratorModal.js';
 import { BreachCheckModal } from './components/BreachCheckModal.js';
 import { ImportModal } from './components/ImportModal.js';
+import { ExportModal } from './components/ExportModal.js';
 
 import { UserSession, VaultItem, SyncState, ItemType, DecryptedPayload } from './types/vault.js';
 import { UnifiedStorage } from './storage/unifiedStorage.js';
@@ -28,6 +29,7 @@ export const App: React.FC = () => {
 
   const [isBreachAuditOpen, setIsBreachAuditOpen] = useState<boolean>(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
 
   // Decrypt items in memory using session vaultKey
   const decryptAllItems = useCallback(
@@ -261,6 +263,7 @@ export const App: React.FC = () => {
         onOpenGenerator={() => openGeneratorModal()}
         onOpenBreachAudit={() => setIsBreachAuditOpen(true)}
         onOpenImport={() => setIsImportModalOpen(true)}
+        onOpenExport={() => setIsExportModalOpen(true)}
         onManualSync={() => session && performSync(session, items)}
       />
 
@@ -307,6 +310,12 @@ export const App: React.FC = () => {
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onImportSuccess={handleImportItems}
+      />
+
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        items={items}
       />
     </div>
   );
