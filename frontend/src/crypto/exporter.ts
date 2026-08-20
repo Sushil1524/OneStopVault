@@ -82,7 +82,7 @@ export const EXPORT_FORMATS: ExportFormatMeta[] = [
   {
     id: 'aegis',
     label: 'Aegis (Plaintext)',
-    targetApps: 'Aegis Authenticator (Android)',
+    targetApps: 'Aegis · Tokn · 979/2fa (Android)',
     ext: '.json',
     mime: 'application/json',
     needsPassword: false,
@@ -91,7 +91,7 @@ export const EXPORT_FORMATS: ExportFormatMeta[] = [
   {
     id: 'aegis-enc',
     label: 'Aegis (Encrypted)',
-    targetApps: 'Aegis Authenticator (Android)',
+    targetApps: 'Aegis · Tokn (Android)',
     ext: '.json',
     mime: 'application/json',
     needsPassword: true,
@@ -101,7 +101,7 @@ export const EXPORT_FORMATS: ExportFormatMeta[] = [
   {
     id: '2fas',
     label: '2FAS (Plaintext)',
-    targetApps: '2FAS Auth (iOS & Android)',
+    targetApps: '2FAS Auth · Tokn (iOS & Android)',
     ext: '.2fas',
     mime: 'application/json',
     needsPassword: false,
@@ -110,18 +110,18 @@ export const EXPORT_FORMATS: ExportFormatMeta[] = [
   {
     id: '2fas-enc',
     label: '2FAS (Encrypted)',
-    targetApps: '2FAS Auth (iOS & Android)',
+    targetApps: '2FAS Auth · Tokn (iOS & Android)',
     ext: '.2fas',
     mime: 'application/json',
     needsPassword: true,
     contentType: 'totp',
     encrypted: true,
   },
-  // ── TOTP URI ──────────────────────────────────────────────────────────────
+  // ── TOTP URI — Universal format readable by any TOTP app ─────────────────
   {
     id: 'totp-uri',
     label: 'TOTP URI List',
-    targetApps: 'Google Authenticator · Authy · Any TOTP app',
+    targetApps: 'Tokn · 979/2fa · Aegis · Google Auth · Authy · Any TOTP app',
     ext: '.txt',
     mime: 'text/plain',
     needsPassword: false,
@@ -137,9 +137,6 @@ function toHex(buf: Uint8Array): string {
 function toBase64(buf: ArrayBuffer | Uint8Array): string {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   return btoa(String.fromCharCode(...bytes));
-}
-function fromBase64(b64: string): Uint8Array {
-  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 }
 
 function triggerDownload(content: string, filename: string, mime: string) {

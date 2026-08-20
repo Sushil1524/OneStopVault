@@ -155,7 +155,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Upload size={22} color="var(--accent-primary)" />
-            <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Import Vault Credentials & 2FA Keys</h2>
+            <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Import Passwords & Credentials</h2>
           </div>
           <button
             onClick={() => {
@@ -225,20 +225,29 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             onClick={() => document.getElementById('import-file-input')?.click()}
           >
             <Upload size={36} color="var(--text-muted)" style={{ marginBottom: '12px' }} />
-            <h3 style={{ fontSize: '1.05rem', marginBottom: '6px' }}>Click or Drop Backup File to Import</h3>
+            <h3 style={{ fontSize: '1.05rem', marginBottom: '6px' }}>Click or Drop Backup File</h3>
             <p style={{ fontSize: '0.825rem', color: 'var(--text-dim)', maxWidth: '440px', margin: '0 auto 16px' }}>
-              Supports Chrome/Firefox/Brave CSVs, Bitwarden JSON, 1Password, 2FAS Authenticator, Aegis Authenticator (.enc, .2fas, .json, .csv, .kv, .aegis)
+              Supports Chrome / Firefox / Edge CSV, Bitwarden JSON, 1Password, and <strong style={{ color: '#fff' }}>OneStop Vault (.osvault)</strong> backup files
             </p>
             <input
               id="import-file-input"
               type="file"
-              accept=".json,.csv,.2fas,.enc,.encrypt,.kv,.aegis,.txt"
+              accept=".json,.csv,.osvault,.txt"
               style={{ display: 'none' }}
               onChange={handleFileChange}
             />
             <button type="button" className="btn btn-secondary" style={{ fontSize: '0.85rem' }}>
               Select File
             </button>
+          </div>
+        )}
+
+        {/* Supported formats hint */}
+        {!fileContent && (
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '12px' }}>
+            {['Chrome CSV', 'Firefox CSV', 'Bitwarden JSON', '1Password', '.osvault'].map(f => (
+              <span key={f} style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.07)', border: '1px solid var(--border-color)', color: 'var(--text-dim)', fontFamily: 'monospace' }}>{f}</span>
+            ))}
           </div>
         )}
 
