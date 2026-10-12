@@ -7,6 +7,8 @@ import { PasswordGeneratorModal } from './components/PasswordGeneratorModal.js';
 import { BreachCheckModal } from './components/BreachCheckModal.js';
 import { ImportModal } from './components/ImportModal.js';
 import { ExportModal } from './components/ExportModal.js';
+import { QuickUnlockScreen } from './components/QuickUnlockScreen.js';
+import { SecuritySettingsModal } from './components/SecuritySettingsModal.js';
 
 import { UserSession, VaultItem, SyncState, ItemType, DecryptedPayload } from './types/vault.js';
 import { UnifiedStorage } from './storage/unifiedStorage.js';
@@ -14,11 +16,22 @@ import { WorkerClient } from './api/workerClient.js';
 import { encryptVaultItem, decryptVaultItem } from './crypto/aesGcm.js';
 import { calculateVaultChecksum } from './crypto/checksum.js';
 import { ImportResultItem } from './crypto/importers/importer.js';
+import {
+  isQuickUnlockConfigured,
+  hasQuickPin,
+  hasBiometrics,
+  saveLockedSessionMeta,
+  getLockedSessionMeta,
+  clearLockedSessionMeta,
+  getAutoLockMinutes,
+  getLockOnBlur,
+} from './crypto/quickUnlock.js';
 
 export const App: React.FC = () => {
   const [session, setSession] = useState<UserSession | null>(null);
   const [items, setItems] = useState<VaultItem[]>([]);
   const [syncState, setSyncState] = useState<SyncState>('IN_SYNC');
+  const [isLocked, setIsLocked] = useState<boolean>(() => isQuickUnlockConfigured());
 
   // Modal Visibility States
   const [isItemModalOpen, setIsItemModalOpen] = useState<boolean>(false);
@@ -30,6 +43,7 @@ export const App: React.FC = () => {
   const [isBreachAuditOpen, setIsBreachAuditOpen] = useState<boolean>(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState<boolean>(false);
 
   // Decrypt items in memory using session vaultKey
   const decryptAllItems = useCallback(
@@ -108,10 +122,12 @@ export const App: React.FC = () => {
     [decryptAllItems]
   );
 
-  // Initialize vault on authentication
+  // Initialize vault on full master password authentication
   const handleAuthenticated = async (newSession: UserSession) => {
     setSession(newSession);
+    saveLockedSessionMeta(newSession);
     UnifiedStorage.saveSession(newSession.user, newSession.token);
+    setIsLocked(false);
 
     // 1. Load local cache
     const { items: cachedItems } = UnifiedStorage.getLocalVault();
@@ -125,11 +141,116 @@ export const App: React.FC = () => {
   };
 
   // Lock Master Vault and wipe keys from memory
-  const handleLock = () => {
+  const handleLock = useCallback(() => {
+    if (session && isQuickUnlockConfigured()) {
+      saveLockedSessionMeta(session);
+      setSession(null);
+      setItems([]);
+      setIsLocked(true);
+    } else {
+      // Full logout if Quick Unlock is not configured
+      setSession(null);
+      setItems([]);
+      UnifiedStorage.clearSession();
+      clearLockedSessionMeta();
+      setIsLocked(false);
+    }
+  }, [session]);
+
+  // Switch to Master Password screen without destroying locked session
+  const handleSwitchToPassword = () => {
+    setIsLocked(false);
+  };
+
+  // Full logout (switches to master password login and clears locked session)
+  const handleFullLogout = () => {
     setSession(null);
     setItems([]);
     UnifiedStorage.clearSession();
+    clearLockedSessionMeta();
+    setIsLocked(false);
   };
+
+  // Quick Unlock success handler (restores vaultKey into RAM)
+  const handleQuickUnlocked = async (unwrappedKey: CryptoKey) => {
+    const meta = getLockedSessionMeta();
+    if (!meta) {
+      handleFullLogout();
+      return;
+    }
+
+    const restoredSession: UserSession = {
+      token: meta.token,
+      user: meta.user,
+      vaultKey: unwrappedKey,
+      authKeyHash: meta.authKeyHash,
+    };
+
+    setSession(restoredSession);
+    setIsLocked(false);
+
+    // Decrypt cached items with unwrapped key
+    const { items: cachedItems } = UnifiedStorage.getLocalVault();
+    if (cachedItems.length > 0) {
+      const decrypted = await decryptAllItems(cachedItems, unwrappedKey);
+      setItems(decrypted);
+    }
+
+    // Trigger cloud sync
+    await performSync(restoredSession, cachedItems);
+  };
+
+  // Auto-Lock Inactivity & Tab Blur Listener
+  useEffect(() => {
+    if (!session || isLocked) return;
+
+    let timeoutId: number | null = null;
+
+    const resetTimer = () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      const minutes = getAutoLockMinutes();
+      if (minutes > 0) {
+        timeoutId = window.setTimeout(() => {
+          handleLock();
+        }, minutes * 60 * 1000);
+      }
+    };
+
+    const handleActivity = () => {
+      resetTimer();
+    };
+
+    const handleBlur = () => {
+      if (getLockOnBlur()) {
+        handleLock();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden && getLockOnBlur()) {
+        handleLock();
+      }
+    };
+
+    resetTimer();
+
+    window.addEventListener('pointerdown', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('touchstart', handleActivity);
+    window.addEventListener('scroll', handleActivity);
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      window.removeEventListener('pointerdown', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('touchstart', handleActivity);
+      window.removeEventListener('scroll', handleActivity);
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [session, isLocked, handleLock]);
 
   // Add or Edit Vault Item
   const handleSaveItem = async (data: { id?: string; itemType: ItemType; payload: DecryptedPayload }) => {
@@ -210,12 +331,11 @@ export const App: React.FC = () => {
     const updatedList = [...newVaultItems, ...items];
     setItems(updatedList);
 
-    // Save to LocalStorage cache
     const localChecksum = await calculateVaultChecksum(updatedList);
     UnifiedStorage.saveLocalVault(updatedList, localChecksum, 1);
 
-    // Trigger Cloudflare D1 batch sync
-    await performSync(session, updatedList);
+    // Batch sync to server
+    performSync(session, updatedList);
   };
 
   // Delete Vault Item
@@ -233,15 +353,18 @@ export const App: React.FC = () => {
       await WorkerClient.deleteVaultItem(session.token, id);
       setSyncState('IN_SYNC');
     } catch (e) {
-      console.warn('Deleted locally, background cloud sync pending...', e);
+      console.warn('Deleted locally, background sync pending...', e);
       setSyncState('OFFLINE');
     }
   };
 
   // Toggle Favorite
   const handleToggleFavorite = async (item: VaultItem) => {
-    if (!item.decrypted) return;
-    const updatedPayload = { ...item.decrypted, favorite: !item.decrypted.favorite };
+    if (!item.decrypted || !session) return;
+    const updatedPayload: DecryptedPayload = {
+      ...item.decrypted,
+      favorite: !item.decrypted.favorite,
+    };
     await handleSaveItem({
       id: item.id,
       itemType: item.itemType,
@@ -257,18 +380,31 @@ export const App: React.FC = () => {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Navbar
-        userEmail={session?.user.email}
+        userEmail={session?.user?.email}
         syncState={syncState}
         onLock={handleLock}
         onOpenGenerator={() => openGeneratorModal()}
         onOpenBreachAudit={() => setIsBreachAuditOpen(true)}
         onOpenImport={() => setIsImportModalOpen(true)}
         onOpenExport={() => setIsExportModalOpen(true)}
+        onOpenSecurity={() => setIsSecurityModalOpen(true)}
         onManualSync={() => session && performSync(session, items)}
       />
 
-      {!session ? (
-        <AuthScreen onAuthenticated={handleAuthenticated} onOpenGenerator={() => openGeneratorModal()} />
+      {isLocked && isQuickUnlockConfigured() ? (
+        <QuickUnlockScreen
+          onUnlocked={handleQuickUnlocked}
+          onSwitchToPassword={handleSwitchToPassword}
+          onFullLogout={handleFullLogout}
+        />
+      ) : !session ? (
+        <AuthScreen
+          onAuthenticated={handleAuthenticated}
+          onOpenGenerator={() => openGeneratorModal()}
+          onQuickUnlock={
+            (hasQuickPin() || hasBiometrics()) ? () => setIsLocked(true) : undefined
+          }
+        />
       ) : (
         <VaultView
           items={items}
@@ -317,6 +453,15 @@ export const App: React.FC = () => {
         onClose={() => setIsExportModalOpen(false)}
         items={items}
       />
+
+      {session && (
+        <SecuritySettingsModal
+          isOpen={isSecurityModalOpen}
+          onClose={() => setIsSecurityModalOpen(false)}
+          session={session}
+          onUpdateSession={(updatedSession) => setSession(updatedSession)}
+        />
+      )}
     </div>
   );
 };

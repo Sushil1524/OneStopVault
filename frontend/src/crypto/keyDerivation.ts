@@ -52,12 +52,12 @@ export async function deriveMasterKeys(masterPassword: string, saltHex: string):
   const vaultKeyBits = derivedArray.slice(0, 32);
   const authKeyBits = derivedArray.slice(32, 64);
 
-  // Import Vault Key as AES-256-GCM key for client encryption
+  // Import Vault Key as AES-256-GCM key for client encryption and quick unlock key wrapping
   const vaultKey = await crypto.subtle.importKey(
     'raw',
     vaultKeyBits,
     { name: 'AES-GCM', length: 256 },
-    false,
+    true, // Extractable so it can be securely wrapped for Quick PIN & Biometrics
     ['encrypt', 'decrypt']
   );
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, KeyRound, Lock, ShieldAlert, Upload, Download, Menu, X, RefreshCw } from 'lucide-react';
+import { Shield, KeyRound, Lock, ShieldAlert, Upload, Download, Menu, X, RefreshCw, Fingerprint } from 'lucide-react';
 import { SyncStatusBadge } from './SyncStatusBadge.js';
 import { SyncState } from '../types/vault.js';
 
@@ -11,6 +11,7 @@ interface NavbarProps {
   onOpenBreachAudit: () => void;
   onOpenImport?: () => void;
   onOpenExport?: () => void;
+  onOpenSecurity?: () => void;
   onManualSync: () => void;
 }
 
@@ -22,6 +23,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenBreachAudit,
   onOpenImport,
   onOpenExport,
+  onOpenSecurity,
   onManualSync,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -95,6 +97,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button onClick={onOpenBreachAudit} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
                   <ShieldAlert size={14} color="var(--accent-amber)" /> Breach Audit
                 </button>
+                {onOpenSecurity && (
+                  <button onClick={onOpenSecurity} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }} title="Security & Quick Unlock">
+                    <Fingerprint size={14} color="var(--accent-primary)" /> Security
+                  </button>
+                )}
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{userEmail}</span>
                 <button onClick={onLock} className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
                   <Lock size={14} /> Lock
@@ -175,6 +182,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button onClick={() => { onOpenBreachAudit(); setMenuOpen(false); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 14px', fontSize: '0.875rem' }}>
             <ShieldAlert size={16} color="var(--accent-amber)" /> Breach Audit
           </button>
+
+          {onOpenSecurity && (
+            <button onClick={() => { onOpenSecurity(); setMenuOpen(false); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 14px', fontSize: '0.875rem' }}>
+              <Fingerprint size={16} /> Security & Quick Unlock
+            </button>
+          )}
 
           <button onClick={() => { onManualSync(); setMenuOpen(false); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 14px', fontSize: '0.875rem' }}>
             <RefreshCw size={16} /> Sync Now

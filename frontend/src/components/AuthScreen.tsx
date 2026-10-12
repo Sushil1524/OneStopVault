@@ -1,17 +1,22 @@
 import React, { useState } from 'react';
-import { Shield, KeyRound, ArrowRight, Download, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
+import { Shield, KeyRound, ArrowRight, Download, AlertCircle, CheckCircle2, Sparkles, Fingerprint } from 'lucide-react';
 import { generateSalt, deriveMasterKeys } from '../crypto/keyDerivation.js';
 import { WorkerClient } from '../api/workerClient.js';
 import { UserSession } from '../types/vault.js';
+import { isQuickUnlockConfigured, hasQuickPin, hasBiometrics, getLockedSessionMeta } from '../crypto/quickUnlock.js';
 
 interface AuthScreenProps {
   onAuthenticated: (session: UserSession) => void;
   onOpenGenerator: () => void;
+  onQuickUnlock?: () => void;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onOpenGenerator }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onOpenGenerator, onQuickUnlock }) => {
   const [isRegister, setIsRegister] = useState<boolean>(false);
-  const [email, setEmail] = useState<string>('');
+  const [email, setEmail] = useState<string>(() => {
+    const meta = getLockedSessionMeta();
+    return meta?.user?.email || '';
+  });
   const [masterPassword, setMasterPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
 
@@ -203,6 +208,35 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onOpenG
           >
             <AlertCircle size={16} />
             <span>{error}</span>
+          </div>
+        )}
+
+        {!isRegister && onQuickUnlock && (hasQuickPin() || hasBiometrics()) && (
+          <div style={{ marginBottom: '20px' }}>
+            <button
+              type="button"
+              onClick={onQuickUnlock}
+              className="btn btn-secondary"
+              style={{
+                width: '100%',
+                padding: '12px',
+                fontSize: '0.9rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                borderColor: 'var(--border-glow)',
+                background: 'rgba(255, 255, 255, 0.06)',
+              }}
+            >
+              <Fingerprint size={20} color="var(--accent-primary)" />
+              <span>Quick Unlock (PIN / Biometrics)</span>
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '16px 0 0' }}>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>or sign in with password</span>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
+            </div>
           </div>
         )}
 

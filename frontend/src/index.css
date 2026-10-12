@@ -175,21 +175,23 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-muted);
 }
 
-.input-field {
+.input-field,
+.input {
   width: 100%;
-  padding: 12px 14px;
-  min-height: 44px;
-  background: rgba(18, 18, 20, 0.9);
+  padding: 10px 14px;
+  min-height: 42px;
+  background: rgba(18, 18, 20, 0.95);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   color: var(--text-main);
   font-family: var(--font-sans);
-  font-size: 16px; /* Prevents auto-zoom on iOS/Android Chrome focus */
+  font-size: 15px;
   outline: none;
   transition: all 0.2s ease;
 }
 
-.input-field:focus {
+.input-field:focus,
+.input:focus {
   border-color: #ffffff;
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
   background: #000000;
