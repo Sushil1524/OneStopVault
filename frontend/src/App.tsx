@@ -258,6 +258,7 @@ export const App: React.FC = () => {
 
     const itemId = data.id || crypto.randomUUID();
     const now = Date.now();
+    const existingItem = items.find(i => i.id === itemId);
 
     // 1. Encrypt payload locally using AES-256-GCM
     const { ciphertext, iv } = await encryptVaultItem(data.payload, session.vaultKey);
@@ -267,7 +268,7 @@ export const App: React.FC = () => {
       itemType: data.itemType,
       ciphertext,
       iv,
-      createdAt: editingItem?.createdAt || now,
+      createdAt: existingItem?.createdAt || editingItem?.createdAt || now,
       updatedAt: now,
       decrypted: data.payload,
     };
@@ -313,6 +314,8 @@ export const App: React.FC = () => {
         url: item.url,
         notes: item.notes,
         totpSecret: item.totpSecret,
+        secretValue: item.secretValue,
+        environment: item.environment,
         tags: item.tags,
       };
 
@@ -338,7 +341,7 @@ export const App: React.FC = () => {
     performSync(session, updatedList);
   };
 
-  // Delete Vault Item
+  // Permanent Delete Vault Item
   const handleDeleteItem = async (id: string) => {
     if (!session) return;
 
@@ -354,6 +357,63 @@ export const App: React.FC = () => {
       setSyncState('IN_SYNC');
     } catch (e) {
       console.warn('Deleted locally, background sync pending...', e);
+      setSyncState('OFFLINE');
+    }
+  };
+
+  // Soft Delete Vault Item (Move to Trash)
+  const handleSoftDelete = async (id: string) => {
+    const item = items.find(i => i.id === id);
+    if (!item || !item.decrypted) return;
+    const updatedPayload: DecryptedPayload = {
+      ...item.decrypted,
+      deletedAt: Date.now(),
+    };
+    await handleSaveItem({
+      id: item.id,
+      itemType: item.itemType,
+      payload: updatedPayload,
+    });
+  };
+
+  // Restore Vault Item from Trash
+  const handleRestoreItem = async (item: VaultItem) => {
+    if (!item.decrypted) return;
+    const updatedPayload: DecryptedPayload = {
+      ...item.decrypted,
+    };
+    delete updatedPayload.deletedAt;
+    await handleSaveItem({
+      id: item.id,
+      itemType: item.itemType,
+      payload: updatedPayload,
+    });
+  };
+
+  // Empty Trash (Permanently purges all items currently in Trash)
+  const handleEmptyTrash = async () => {
+    if (!session) return;
+    const trashItems = items.filter(i => !!i.decrypted?.deletedAt);
+    if (trashItems.length === 0) return;
+
+    const remainingItems = items.filter(i => !i.decrypted?.deletedAt);
+    setItems(remainingItems);
+
+    const localChecksum = await calculateVaultChecksum(remainingItems);
+    UnifiedStorage.saveLocalVault(remainingItems, localChecksum, 1);
+
+    try {
+      setSyncState('SYNCING');
+      await Promise.all(
+        trashItems.map(item =>
+          WorkerClient.deleteVaultItem(session.token, item.id).catch(e =>
+            console.warn('Failed to delete item from cloud', item.id, e)
+          )
+        )
+      );
+      setSyncState('IN_SYNC');
+    } catch (e) {
+      console.warn('Batch trash empty error', e);
       setSyncState('OFFLINE');
     }
   };
@@ -417,6 +477,9 @@ export const App: React.FC = () => {
             setIsItemModalOpen(true);
           }}
           onToggleFavorite={handleToggleFavorite}
+          onRestoreItem={handleRestoreItem}
+          onPermanentDelete={handleDeleteItem}
+          onEmptyTrash={handleEmptyTrash}
         />
       )}
 
@@ -425,7 +488,9 @@ export const App: React.FC = () => {
         isOpen={isItemModalOpen}
         onClose={() => setIsItemModalOpen(false)}
         onSave={handleSaveItem}
-        onDelete={handleDeleteItem}
+        onSoftDelete={handleSoftDelete}
+        onPermanentDelete={handleDeleteItem}
+        onRestore={handleRestoreItem}
         initialItem={editingItem}
         onOpenGenerator={(onSelect) => openGeneratorModal(onSelect)}
       />
@@ -439,7 +504,7 @@ export const App: React.FC = () => {
       <BreachCheckModal
         isOpen={isBreachAuditOpen}
         onClose={() => setIsBreachAuditOpen(false)}
-        items={items}
+        items={items.filter(i => !i.decrypted?.deletedAt)}
       />
 
       <ImportModal
@@ -451,7 +516,7 @@ export const App: React.FC = () => {
       <ExportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
-        items={items}
+        items={items.filter(i => !i.decrypted?.deletedAt)}
       />
 
       {session && (

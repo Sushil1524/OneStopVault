@@ -1,5 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { X, KeyRound, FileText, Eye, EyeOff, Sparkles, ShieldCheck, Star, Tag, Plus } from 'lucide-react';
+import {
+  X,
+  KeyRound,
+  FileText,
+  Terminal,
+  Eye,
+  EyeOff,
+  Sparkles,
+  ShieldCheck,
+  Star,
+  Tag,
+  Plus,
+  Trash2,
+  RotateCcw,
+  Copy,
+  Check,
+  AlertTriangle,
+} from 'lucide-react';
 import { ItemType, DecryptedPayload, VaultItem } from '../types/vault.js';
 import { checkPasswordBreach } from '../crypto/hibp.js';
 
@@ -7,14 +24,16 @@ interface ItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (item: { id?: string; itemType: ItemType; payload: DecryptedPayload }) => Promise<void>;
-  onDelete?: (id: string) => Promise<void>;
+  onSoftDelete?: (id: string) => Promise<void>;
+  onPermanentDelete?: (id: string) => Promise<void>;
+  onRestore?: (item: VaultItem) => Promise<void>;
   initialItem?: VaultItem | null;
   onOpenGenerator: (onSelect: (pass: string) => void) => void;
 }
 
-const PRESET_TAGS = ['Social', 'Work', 'Finance', 'Personal', 'Shopping', 'Dev'];
+const PRESET_TAGS = ['Social', 'Work', 'Finance', 'Personal', 'Dev', 'API', 'Server', 'Cloud'];
+const PRESET_ENVIRONMENTS = ['Production', 'Staging', 'Development', 'Test'];
 
-// Empty form state used when adding a new item
 const EMPTY_FORM = {
   name: '',
   username: '',
@@ -22,6 +41,8 @@ const EMPTY_FORM = {
   url: '',
   notes: '',
   totpSecret: '',
+  secretValue: '',
+  environment: 'Production',
   favorite: false,
   tags: [] as string[],
 };
@@ -30,18 +51,23 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   isOpen,
   onClose,
   onSave,
-  onDelete,
+  onSoftDelete,
+  onPermanentDelete,
+  onRestore,
   initialItem,
   onOpenGenerator,
 }) => {
   const [itemType, setItemType] = useState<ItemType>('login');
   const [form, setForm] = useState(EMPTY_FORM);
   const [showPassword, setShowPassword] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [breachCount, setBreachCount] = useState<number | null>(null);
   const [customTagInput, setCustomTagInput] = useState('');
+  const [copiedSecret, setCopiedSecret] = useState(false);
 
-  // When the modal opens, populate form with existing item data or reset to empty
+  const isItemDeleted = !!initialItem?.decrypted?.deletedAt;
+
   useEffect(() => {
     if (initialItem?.decrypted) {
       const d = initialItem.decrypted;
@@ -53,6 +79,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({
         url: d.url || '',
         notes: d.notes || '',
         totpSecret: d.totpSecret || '',
+        secretValue: d.secretValue || '',
+        environment: d.environment || 'Production',
         favorite: !!d.favorite,
         tags: Array.isArray(d.tags) ? d.tags : [],
       });
@@ -62,16 +90,17 @@ export const ItemModal: React.FC<ItemModalProps> = ({
     }
     setBreachCount(null);
     setShowPassword(false);
+    setShowSecret(false);
     setCustomTagInput('');
+    setCopiedSecret(false);
   }, [initialItem, isOpen]);
 
   if (!isOpen) return null;
 
-  // Helper to update a single form field
-  const set = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setForm(prev => ({ ...prev, [field]: e.target.value }));
+  const set = (field: keyof typeof form) => (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => setForm(prev => ({ ...prev, [field]: e.target.value }));
 
-  // Toggle tag selection
   const toggleTag = (tag: string) => {
     setForm(prev => {
       const exists = prev.tags.includes(tag);
@@ -82,7 +111,6 @@ export const ItemModal: React.FC<ItemModalProps> = ({
     });
   };
 
-  // Add custom tag on Enter or click
   const handleAddCustomTag = () => {
     const trimmed = customTagInput.trim();
     if (!trimmed) return;
@@ -98,13 +126,20 @@ export const ItemModal: React.FC<ItemModalProps> = ({
     setBreachCount(result.breachCount);
   };
 
+  const handleCopySecret = () => {
+    if (!form.secretValue) return;
+    navigator.clipboard.writeText(form.secretValue);
+    setCopiedSecret(true);
+    setTimeout(() => setCopiedSecret(false), 2000);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return;
     setSaving(true);
     try {
       const payload: DecryptedPayload = {
-        name: form.name,
+        name: form.name.trim(),
         notes: form.notes,
         favorite: form.favorite,
         tags: form.tags,
@@ -114,6 +149,12 @@ export const ItemModal: React.FC<ItemModalProps> = ({
           url: form.url,
           totpSecret: form.totpSecret,
         }),
+        ...(itemType === 'secret' && {
+          secretValue: form.secretValue,
+          environment: form.environment,
+          url: form.url,
+        }),
+        ...(initialItem?.decrypted?.deletedAt ? { deletedAt: initialItem.decrypted.deletedAt } : {}),
       };
       await onSave({ id: initialItem?.id, itemType, payload });
       onClose();
@@ -124,45 +165,139 @@ export const ItemModal: React.FC<ItemModalProps> = ({
     }
   };
 
-  const handleDelete = async () => {
-    if (!initialItem || !onDelete) return;
-    if (!confirm('Delete this vault item permanently?')) return;
-    await onDelete(initialItem.id);
+  // Soft delete (Move to Trash)
+  const handleSoftDelete = async () => {
+    if (!initialItem || !onSoftDelete) return;
+    await onSoftDelete(initialItem.id);
+    onClose();
+  };
+
+  // Restore from Trash
+  const handleRestore = async () => {
+    if (!initialItem || !onRestore) return;
+    await onRestore(initialItem);
+    onClose();
+  };
+
+  // Permanent Delete
+  const handlePermanentDelete = async () => {
+    if (!initialItem || !onPermanentDelete) return;
+    if (!confirm(`Permanently delete "${form.name}"? This cannot be undone.`)) return;
+    await onPermanentDelete(initialItem.id);
     onClose();
   };
 
   return (
-    // Backdrop — click outside to close
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
-        zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.75)',
+        backdropFilter: 'blur(8px)',
+        zIndex: 90,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
       }}
     >
-      {/* Modal panel */}
       <div
         onClick={e => e.stopPropagation()}
         className="glass-panel animate-fade-in"
-        style={{ width: '100%', maxWidth: '520px', padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}
+        style={{
+          width: '100%',
+          maxWidth: '540px',
+          padding: '24px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+        }}
       >
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '1.25rem', margin: 0 }}>{initialItem ? 'Edit Item' : 'New Item'}</h2>
-          <button onClick={onClose} className="btn btn-ghost" style={{ padding: '6px' }}><X size={20} /></button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 style={{ fontSize: '1.25rem', margin: 0 }}>
+              {initialItem ? (isItemDeleted ? 'Item in Trash' : 'Edit Item') : 'New Item'}
+            </h2>
+            {initialItem && (
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                }}
+              >
+                {itemType === 'login' ? 'Login' : itemType === 'secret' ? 'API Key / Secret' : 'Note'}
+              </span>
+            )}
+          </div>
+          <button onClick={onClose} className="btn btn-ghost" style={{ padding: '6px' }}>
+            <X size={20} />
+          </button>
         </div>
 
-        {/* Item type selector */}
+        {/* Trash Banner if in trash */}
+        {isItemDeleted && (
+          <div
+            style={{
+              background: 'rgba(244, 63, 94, 0.1)',
+              border: '1px solid rgba(244, 63, 94, 0.3)',
+              borderRadius: 'var(--radius-md)',
+              padding: '12px 14px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-rose)', fontSize: '0.85rem' }}>
+              <AlertTriangle size={16} />
+              <span>This item is currently in Trash</span>
+            </div>
+            {onRestore && (
+              <button
+                type="button"
+                onClick={handleRestore}
+                className="btn btn-secondary"
+                style={{ padding: '4px 10px', fontSize: '0.78rem', minHeight: 'auto', gap: '5px' }}
+              >
+                <RotateCcw size={13} /> Restore
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Item type selector (for new items) */}
         {!initialItem && (
           <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-            <button type="button" onClick={() => setItemType('login')}
-              className={`btn ${itemType === 'login' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }}>
-              <KeyRound size={16} /> Login
+            <button
+              type="button"
+              onClick={() => setItemType('login')}
+              className={`btn ${itemType === 'login' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ flex: 1, fontSize: '0.825rem', padding: '8px 10px' }}
+            >
+              <KeyRound size={15} /> Login
             </button>
-            <button type="button" onClick={() => setItemType('note')}
-              className={`btn ${itemType === 'note' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }}>
-              <FileText size={16} /> Secure Note
+            <button
+              type="button"
+              onClick={() => setItemType('secret')}
+              className={`btn ${itemType === 'secret' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ flex: 1, fontSize: '0.825rem', padding: '8px 10px' }}
+            >
+              <Terminal size={15} /> API Key / Secret
+            </button>
+            <button
+              type="button"
+              onClick={() => setItemType('note')}
+              className={`btn ${itemType === 'note' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ flex: 1, fontSize: '0.825rem', padding: '8px 10px' }}
+            >
+              <FileText size={15} /> Note
             </button>
           </div>
         )}
@@ -172,22 +307,229 @@ export const ItemModal: React.FC<ItemModalProps> = ({
           <div className="input-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <label className="input-label">Title *</label>
-              <button type="button" onClick={() => setForm(p => ({ ...p, favorite: !p.favorite }))}
-                className="btn btn-ghost" style={{ padding: '2px 6px', color: form.favorite ? 'var(--accent-amber)' : 'var(--text-dim)' }}>
+              <button
+                type="button"
+                onClick={() => setForm(p => ({ ...p, favorite: !p.favorite }))}
+                className="btn btn-ghost"
+                style={{ padding: '2px 6px', color: form.favorite ? 'var(--accent-amber)' : 'var(--text-dim)' }}
+                title="Star / Favorite"
+              >
                 <Star size={16} fill={form.favorite ? 'var(--accent-amber)' : 'none'} />
               </button>
             </div>
-            <input required type="text" className="input-field" placeholder="e.g. GitHub, Netflix, SSH Key"
-              value={form.name} onChange={set('name')} />
+            <input
+              required
+              type="text"
+              className="input-field"
+              placeholder={
+                itemType === 'secret'
+                  ? 'e.g. Stripe Production Key, OpenAI API Token, AWS Secret'
+                  : 'e.g. GitHub, Google, Netflix'
+              }
+              value={form.name}
+              onChange={set('name')}
+            />
           </div>
 
-          {/* Category Tags Selector */}
+          {/* ──────────────── Developer Secret & API Key Fields ──────────────── */}
+          {itemType === 'secret' && (
+            <>
+              {/* Environment selector */}
+              <div className="input-group">
+                <label className="input-label">Environment</label>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                  {PRESET_ENVIRONMENTS.map(env => {
+                    const isSelected = form.environment === env;
+                    return (
+                      <button
+                        key={env}
+                        type="button"
+                        onClick={() => setForm(p => ({ ...p, environment: env }))}
+                        className="btn"
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '0.75rem',
+                          minHeight: '28px',
+                          borderRadius: '8px',
+                          background: isSelected ? 'var(--accent-primary)' : 'rgba(255,255,255,0.06)',
+                          color: isSelected ? '#000000' : 'var(--text-main)',
+                          fontWeight: isSelected ? 600 : 400,
+                          borderColor: isSelected ? 'transparent' : 'var(--border-color)',
+                        }}
+                      >
+                        {env}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Secret Value field */}
+              <div className="input-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label className="input-label" style={{ margin: 0 }}>API Key / Secret Token *</label>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {form.secretValue && (
+                      <button
+                        type="button"
+                        onClick={handleCopySecret}
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 6px', fontSize: '0.75rem', gap: '4px' }}
+                      >
+                        {copiedSecret ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+                        <span>{copiedSecret ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowSecret(v => !v)}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px' }}
+                      title={showSecret ? 'Mask Secret' : 'Reveal Secret'}
+                    >
+                      {showSecret ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onOpenGenerator(newPass => setForm(p => ({ ...p, secretValue: newPass })))}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px', color: 'var(--accent-primary)' }}
+                      title="Generate random secret/token"
+                    >
+                      <Sparkles size={15} />
+                    </button>
+                  </div>
+                </div>
+
+                <textarea
+                  rows={4}
+                  className="input-field mono"
+                  style={{
+                    fontSize: '0.85rem',
+                    letterSpacing: showSecret ? '0' : '2px',
+                    wordBreak: 'break-all',
+                    resize: 'vertical',
+                    background: 'rgba(15, 23, 42, 0.95)',
+                  }}
+                  placeholder="Paste your API key, private key, token, or connection string…"
+                  value={form.secretValue}
+                  onChange={set('secretValue')}
+                  required
+                />
+              </div>
+
+              {/* Service / Endpoint URL */}
+              <div className="input-group">
+                <label className="input-label">Service / Endpoint URL (Optional)</label>
+                <input
+                  type="url"
+                  className="input-field"
+                  placeholder="https://api.openai.com or https://aws.amazon.com"
+                  value={form.url}
+                  onChange={set('url')}
+                />
+              </div>
+            </>
+          )}
+
+          {/* ──────────────── Login Specific Fields ──────────────── */}
+          {itemType === 'login' && (
+            <>
+              <div className="input-group">
+                <label className="input-label">Username / Email</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="you@example.com"
+                  value={form.username}
+                  onChange={set('username')}
+                />
+              </div>
+
+              {/* Password with show/hide + generator + breach check */}
+              <div className="input-group">
+                <label className="input-label">Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    className="input-field mono"
+                    style={{ paddingRight: '88px' }}
+                    placeholder="Enter or generate a password"
+                    value={form.password}
+                    onChange={e => { set('password')(e); setBreachCount(null); }}
+                  />
+                  <div style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: '4px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      style={{ padding: '6px' }}
+                      onClick={() => setShowPassword(v => !v)}
+                      title={showPassword ? 'Hide' : 'Show'}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      style={{ padding: '6px', color: 'var(--accent-primary)' }}
+                      onClick={() => onOpenGenerator(newPass => setForm(p => ({ ...p, password: newPass })))}
+                      title="Generate password"
+                    >
+                      <Sparkles size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                {form.password && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}
+                      onClick={handleCheckBreach}
+                    >
+                      <ShieldCheck size={14} color="var(--accent-emerald)" /> Check for leaks
+                    </button>
+                    {breachCount !== null && (
+                      <span className={`badge ${breachCount > 0 ? 'badge-danger' : 'badge-success'}`} style={{ fontSize: '0.7rem' }}>
+                        {breachCount > 0 ? `Leaked ${breachCount.toLocaleString()} times` : 'Not found in any breach'}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">Website URL</label>
+                <input
+                  type="url"
+                  className="input-field"
+                  placeholder="https://github.com"
+                  value={form.url}
+                  onChange={set('url')}
+                />
+              </div>
+
+              {/* TOTP 2FA secret */}
+              <div className="input-group">
+                <label className="input-label">2FA Secret Key (TOTP)</label>
+                <input
+                  type="text"
+                  className="input-field mono"
+                  placeholder="JBSWY3DPEHPK3PXP"
+                  value={form.totpSecret}
+                  onChange={e => setForm(p => ({ ...p, totpSecret: e.target.value.toUpperCase() }))}
+                />
+              </div>
+            </>
+          )}
+
+          {/* ──────────────── Category Tags ──────────────── */}
           <div className="input-group">
             <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Tag size={13} /> Tags & Categories
             </label>
             
-            {/* Tag Pills */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
               {PRESET_TAGS.map(tag => {
                 const isSelected = form.tags.includes(tag);
@@ -233,13 +575,12 @@ export const ItemModal: React.FC<ItemModalProps> = ({
               ))}
             </div>
 
-            {/* Custom Tag Input */}
             <div style={{ display: 'flex', gap: '6px' }}>
               <input
                 type="text"
                 className="input-field"
                 style={{ padding: '8px 12px', fontSize: '0.825rem' }}
-                placeholder="Add custom tag (e.g. Work, Gaming, Server)"
+                placeholder="Add custom tag (e.g. Production, Stripe, Database)"
                 value={customTagInput}
                 onChange={e => setCustomTagInput(e.target.value)}
                 onKeyDown={e => {
@@ -260,84 +601,72 @@ export const ItemModal: React.FC<ItemModalProps> = ({
             </div>
           </div>
 
-          {/* Login-specific fields */}
-          {itemType === 'login' && (
-            <>
-              <div className="input-group">
-                <label className="input-label">Username / Email</label>
-                <input type="text" className="input-field" placeholder="you@example.com"
-                  value={form.username} onChange={set('username')} />
-              </div>
-
-              {/* Password with show/hide + generator + breach check */}
-              <div className="input-group">
-                <label className="input-label">Password</label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    className="input-field mono"
-                    style={{ paddingRight: '88px' }}
-                    placeholder="Enter or generate a password"
-                    value={form.password}
-                    onChange={e => { set('password')(e); setBreachCount(null); }}
-                  />
-                  <div style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: '4px' }}>
-                    <button type="button" className="btn btn-ghost" style={{ padding: '6px' }}
-                      onClick={() => setShowPassword(v => !v)} title={showPassword ? 'Hide' : 'Show'}>
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                    <button type="button" className="btn btn-ghost" style={{ padding: '6px', color: 'var(--accent-primary)' }}
-                      onClick={() => onOpenGenerator(newPass => setForm(p => ({ ...p, password: newPass })))} title="Generate password">
-                      <Sparkles size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                {form.password && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
-                    <button type="button" className="btn btn-ghost"
-                      style={{ padding: '2px 8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}
-                      onClick={handleCheckBreach}>
-                      <ShieldCheck size={14} color="var(--accent-emerald)" /> Check for leaks
-                    </button>
-                    {breachCount !== null && (
-                      <span className={`badge ${breachCount > 0 ? 'badge-danger' : 'badge-success'}`} style={{ fontSize: '0.7rem' }}>
-                        {breachCount > 0 ? `Leaked ${breachCount.toLocaleString()} times` : 'Not found in any breach'}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="input-group">
-                <label className="input-label">Website URL</label>
-                <input type="url" className="input-field" placeholder="https://github.com"
-                  value={form.url} onChange={set('url')} />
-              </div>
-
-              {/* TOTP 2FA secret */}
-              <div className="input-group">
-                <label className="input-label">2FA Secret Key (TOTP)</label>
-                <input type="text" className="input-field mono" placeholder="JBSWY3DPEHPK3PXP"
-                  value={form.totpSecret} onChange={e => setForm(p => ({ ...p, totpSecret: e.target.value.toUpperCase() }))} />
-              </div>
-            </>
-          )}
-
           {/* Notes */}
           <div className="input-group">
             <label className="input-label">Notes</label>
-            <textarea rows={3} className="input-field" style={{ resize: 'vertical' }}
-              placeholder="Additional encrypted notes…" value={form.notes} onChange={set('notes')} />
+            <textarea
+              rows={3}
+              className="input-field"
+              style={{ resize: 'vertical' }}
+              placeholder={
+                itemType === 'secret'
+                  ? 'Key scopes, rotation policy, owner, permissions…'
+                  : 'Additional encrypted notes…'
+              }
+              value={form.notes}
+              onChange={set('notes')}
+            />
           </div>
 
           {/* Action buttons */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '24px', gap: '12px' }}>
-            {initialItem && onDelete
-              ? <button type="button" className="btn btn-danger" onClick={handleDelete}>Delete</button>
-              : <div />}
+            {initialItem ? (
+              isItemDeleted ? (
+                /* Item is in Trash */
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {onRestore && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleRestore}
+                      style={{ fontSize: '0.825rem', padding: '6px 12px' }}
+                    >
+                      <RotateCcw size={14} /> Restore
+                    </button>
+                  )}
+                  {onPermanentDelete && (
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={handlePermanentDelete}
+                      style={{ fontSize: '0.825rem', padding: '6px 12px' }}
+                    >
+                      <Trash2 size={14} /> Delete Permanently
+                    </button>
+                  )}
+                </div>
+              ) : (
+                /* Active item -> Move to Trash */
+                onSoftDelete ? (
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={handleSoftDelete}
+                    style={{ fontSize: '0.825rem', padding: '6px 12px' }}
+                    title="Move to Trash"
+                  >
+                    <Trash2 size={14} /> Move to Trash
+                  </button>
+                ) : <div />
+              )
+            ) : (
+              <div />
+            )}
+
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                Cancel
+              </button>
               <button type="submit" disabled={saving} className="btn btn-primary">
                 {saving ? 'Saving…' : 'Save Item'}
               </button>

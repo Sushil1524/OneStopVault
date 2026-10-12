@@ -24,6 +24,8 @@ export interface ImportResultItem {
   totpSecret?: string;
   tags?: string[];
   itemType: ItemType;
+  secretValue?: string;
+  environment?: string;
 }
 
 export interface ParseOutcome {
@@ -194,8 +196,10 @@ function parseOsvaultItems(payload: any): ParseOutcome {
     url: i.url,
     notes: i.notes,
     totpSecret: cleanTotpSecret(i.totpSecret),
+    secretValue: i.secretValue,
+    environment: i.environment,
     tags: sanitizeTags([...(i.tags || []), 'Imported']),
-    itemType: (i.itemType || (i.password ? 'login' : 'note')) as ItemType,
+    itemType: (i.itemType || (i.secretValue ? 'secret' : (i.password ? 'login' : 'note'))) as ItemType,
   }));
   return { formatName: 'OneStop Vault Backup', items };
 }

@@ -157,7 +157,7 @@ function totpItems(items: VaultItem[]) {
   return items.filter(i => i.decrypted?.totpSecret);
 }
 function loginItems(items: VaultItem[]) {
-  return items.filter(i => i.decrypted && (i.itemType === 'login' || i.itemType === 'note'));
+  return items.filter(i => i.decrypted && (i.itemType === 'login' || i.itemType === 'note' || i.itemType === 'secret'));
 }
 function getHostname(url?: string): string {
   if (!url) return '';
@@ -182,7 +182,25 @@ async function exportOsvault(items: VaultItem[], content: ExportContent, passwor
   const salt = new Uint8Array(16); const iv = new Uint8Array(12);
   crypto.getRandomValues(salt); crypto.getRandomValues(iv);
   const key = await deriveKey_PBKDF2_GCM(password, salt);
-  const payload = JSON.stringify({ exportedAt: new Date().toISOString(), exportType: content, items: filtered.map(i => { const d = i.decrypted!; return { name: d.name, username: d.username, password: d.password, url: d.url, notes: d.notes, totpSecret: d.totpSecret, tags: d.tags }; }) });
+  const payload = JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    exportType: content,
+    items: filtered.map(i => {
+      const d = i.decrypted!;
+      return {
+        name: d.name,
+        username: d.username,
+        password: d.password,
+        url: d.url,
+        notes: d.notes,
+        totpSecret: d.totpSecret,
+        tags: d.tags,
+        secretValue: d.secretValue,
+        environment: d.environment,
+        itemType: i.itemType,
+      };
+    }),
+  });
   const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(payload));
   const envelope = JSON.stringify({ version: 1, app: 'onestop-vault', exportType: content, encrypted: true, salt: toHex(salt), iv: toHex(iv), ciphertext: toBase64(cipherBuf) }, null, 2);
   triggerDownload(envelope, `onestop-vault-${content}-${timestamp()}.osvault`, 'application/json');
@@ -192,7 +210,7 @@ async function exportOsvault(items: VaultItem[], content: ExportContent, passwor
 // ─── Browser CSV (.csv) ───────────────────────────────────────────────────────
 
 function exportCsv(items: VaultItem[]): number {
-  const rows = loginItems(items).filter(i => i.decrypted);
+  const rows = loginItems(items).filter(i => i.decrypted && i.itemType === 'login');
   const esc = (v?: string) => `"${(v || '').replace(/"/g, '""')}"`;
   const lines = ['name,url,username,password', ...rows.map(i => { const d = i.decrypted!; return [esc(d.name), esc(d.url), esc(d.username), esc(d.password)].join(','); })];
   triggerDownload(lines.join('\r\n'), `passwords-${timestamp()}.csv`, 'text/csv');
@@ -205,7 +223,26 @@ function exportBitwarden(items: VaultItem[], content: ExportContent): number {
   const filtered = content === 'totp' ? totpItems(items) : content === 'logins' ? loginItems(items) : items.filter(i => i.decrypted);
   const bwItems = filtered.map(item => {
     const d = item.decrypted!;
-    const base: Record<string, unknown> = { id: item.id, organizationId: null, folderId: null, type: item.itemType === 'note' ? 2 : 1, reprompt: 0, name: d.name, notes: d.notes || null, favorite: d.favorite ?? false, fields: d.tags?.map(t => ({ name: 'tag', value: t, type: 0 })) ?? [] };
+    const customFields: { name: string; value: string; type: number }[] = [];
+    if (d.tags) {
+      d.tags.forEach(t => customFields.push({ name: 'tag', value: t, type: 0 }));
+    }
+    if (item.itemType === 'secret') {
+      if (d.environment) customFields.push({ name: 'environment', value: d.environment, type: 0 });
+      if (d.secretValue) customFields.push({ name: 'secret_key', value: d.secretValue, type: 1 });
+    }
+
+    const base: Record<string, unknown> = {
+      id: item.id,
+      organizationId: null,
+      folderId: null,
+      type: item.itemType === 'login' ? 1 : 2,
+      reprompt: 0,
+      name: d.name,
+      notes: d.notes || null,
+      favorite: d.favorite ?? false,
+      fields: customFields,
+    };
     if (item.itemType === 'login') {
       base.login = { username: d.username || null, password: d.password || null, totp: d.totpSecret || null, uris: d.url ? [{ match: null, uri: d.url }] : [] };
       base.secureNote = null;
