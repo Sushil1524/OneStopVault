@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { ItemType, DecryptedPayload, VaultItem } from '../types/vault.js';
 import { checkPasswordBreach } from '../crypto/hibp.js';
+import { GeneratorTab } from './PasswordGeneratorModal.js';
 
 interface ItemModalProps {
   isOpen: boolean;
@@ -28,7 +29,7 @@ interface ItemModalProps {
   onPermanentDelete?: (id: string) => Promise<void>;
   onRestore?: (item: VaultItem) => Promise<void>;
   initialItem?: VaultItem | null;
-  onOpenGenerator: (onSelect: (pass: string) => void) => void;
+  onOpenGenerator: (onSelect: (val: string) => void, mode?: GeneratorTab) => void;
 }
 
 const PRESET_TAGS = ['Social', 'Work', 'Finance', 'Personal', 'Dev', 'API', 'Server', 'Cloud'];
@@ -436,11 +437,23 @@ export const ItemModal: React.FC<ItemModalProps> = ({
           {itemType === 'login' && (
             <>
               <div className="input-group">
-                <label className="input-label">Username / Email</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label className="input-label" style={{ margin: 0 }}>Username / Email</label>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ padding: '2px 6px', fontSize: '0.75rem', gap: '4px', color: 'var(--accent-primary)' }}
+                    onClick={() => onOpenGenerator((newVal) => setForm(p => ({ ...p, username: newVal })), 'username')}
+                    title="Generate username handle or email alias"
+                  >
+                    <Sparkles size={13} />
+                    <span>Generate</span>
+                  </button>
+                </div>
                 <input
                   type="text"
                   className="input-field"
-                  placeholder="you@example.com"
+                  placeholder="you@example.com or username"
                   value={form.username}
                   onChange={set('username')}
                 />
@@ -472,7 +485,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                       type="button"
                       className="btn btn-ghost"
                       style={{ padding: '6px', color: 'var(--accent-primary)' }}
-                      onClick={() => onOpenGenerator(newPass => setForm(p => ({ ...p, password: newPass })))}
+                      onClick={() => onOpenGenerator((newPass) => setForm(p => ({ ...p, password: newPass })), 'password')}
                       title="Generate password"
                     >
                       <Sparkles size={16} />

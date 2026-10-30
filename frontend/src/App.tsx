@@ -3,7 +3,7 @@ import { Navbar } from './components/Navbar.js';
 import { AuthScreen } from './components/AuthScreen.js';
 import { VaultView } from './components/VaultView.js';
 import { ItemModal } from './components/ItemModal.js';
-import { PasswordGeneratorModal } from './components/PasswordGeneratorModal.js';
+import { PasswordGeneratorModal, GeneratorTab } from './components/PasswordGeneratorModal.js';
 import { BreachCheckModal } from './components/BreachCheckModal.js';
 import { ImportModal } from './components/ImportModal.js';
 import { ExportModal } from './components/ExportModal.js';
@@ -38,6 +38,7 @@ export const App: React.FC = () => {
   const [editingItem, setEditingItem] = useState<VaultItem | null>(null);
 
   const [isGeneratorOpen, setIsGeneratorOpen] = useState<boolean>(false);
+  const [generatorInitialMode, setGeneratorInitialMode] = useState<GeneratorTab>('password');
   const [onGeneratorSelect, setOnGeneratorSelect] = useState<((pass: string) => void) | undefined>(undefined);
 
   const [isBreachAuditOpen, setIsBreachAuditOpen] = useState<boolean>(false);
@@ -432,8 +433,9 @@ export const App: React.FC = () => {
     });
   };
 
-  const openGeneratorModal = (onSelect?: (pass: string) => void) => {
+  const openGeneratorModal = (onSelect?: (pass: string) => void, mode: GeneratorTab = 'password') => {
     setOnGeneratorSelect(() => onSelect);
+    setGeneratorInitialMode(mode);
     setIsGeneratorOpen(true);
   };
 
@@ -492,13 +494,14 @@ export const App: React.FC = () => {
         onPermanentDelete={handleDeleteItem}
         onRestore={handleRestoreItem}
         initialItem={editingItem}
-        onOpenGenerator={(onSelect) => openGeneratorModal(onSelect)}
+        onOpenGenerator={(onSelect, mode) => openGeneratorModal(onSelect, mode)}
       />
 
       <PasswordGeneratorModal
         isOpen={isGeneratorOpen}
         onClose={() => setIsGeneratorOpen(false)}
         onSelectPassword={onGeneratorSelect}
+        initialMode={generatorInitialMode}
       />
 
       <BreachCheckModal
