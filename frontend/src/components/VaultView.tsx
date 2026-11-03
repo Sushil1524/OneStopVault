@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   Tag,
   Terminal,
+  Wallet,
   Trash2,
   AlertTriangle,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ const CATEGORIES = [
   { id: 'all', label: 'All', icon: <ShieldCheck size={14} /> },
   { id: 'favorites', label: 'Starred', icon: <Star size={14} /> },
   { id: 'login', label: 'Logins', icon: <KeyRound size={14} /> },
+  { id: 'wallet', label: 'Wallets', icon: <Wallet size={14} /> },
   { id: 'secret', label: 'API Keys', icon: <Terminal size={14} /> },
   { id: 'note', label: 'Notes', icon: <FileText size={14} /> },
   { id: 'trash', label: 'Trash', icon: <Trash2 size={14} /> },
@@ -59,6 +61,7 @@ export const VaultView: React.FC<VaultViewProps> = ({
     if (!isTrashView) {
       if (activeCategory === 'favorites' && !d?.favorite) return false;
       if (activeCategory === 'login' && item.itemType !== 'login') return false;
+      if (activeCategory === 'wallet' && item.itemType !== 'wallet') return false;
       if (activeCategory === 'secret' && item.itemType !== 'secret') return false;
       if (activeCategory === 'note' && item.itemType !== 'note') return false;
     }
@@ -72,6 +75,9 @@ export const VaultView: React.FC<VaultViewProps> = ({
         d?.notes?.toLowerCase().includes(q) ||
         d?.environment?.toLowerCase().includes(q) ||
         d?.secretValue?.toLowerCase().includes(q) ||
+        d?.walletAddress?.toLowerCase().includes(q) ||
+        d?.network?.toLowerCase().includes(q) ||
+        d?.derivationPath?.toLowerCase().includes(q) ||
         d?.tags?.some(t => t.toLowerCase().includes(q))
       );
     }
@@ -82,6 +88,7 @@ export const VaultView: React.FC<VaultViewProps> = ({
     all: activeItems.length,
     favorites: activeItems.filter(i => i.decrypted?.favorite).length,
     login: activeItems.filter(i => i.itemType === 'login').length,
+    wallet: activeItems.filter(i => i.itemType === 'wallet').length,
     secret: activeItems.filter(i => i.itemType === 'secret').length,
     note: activeItems.filter(i => i.itemType === 'note').length,
     trash: trashItems.length,
@@ -107,7 +114,7 @@ export const VaultView: React.FC<VaultViewProps> = ({
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
             {searchQuery || activeTag
               ? 'Clear filters to see all items.'
-              : 'Tap + to add your first password, API key, or note.'}
+              : 'Tap + to add your first password, crypto wallet, API key, or note.'}
           </p>
           {!searchQuery && !activeTag && (
             <button onClick={onAddNew} className="btn btn-primary">

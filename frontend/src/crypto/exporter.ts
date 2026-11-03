@@ -157,7 +157,7 @@ function totpItems(items: VaultItem[]) {
   return items.filter(i => i.decrypted?.totpSecret);
 }
 function loginItems(items: VaultItem[]) {
-  return items.filter(i => i.decrypted && (i.itemType === 'login' || i.itemType === 'note' || i.itemType === 'secret'));
+  return items.filter(i => i.decrypted && (i.itemType === 'login' || i.itemType === 'note' || i.itemType === 'secret' || i.itemType === 'wallet'));
 }
 function getHostname(url?: string): string {
   if (!url) return '';
@@ -197,6 +197,11 @@ async function exportOsvault(items: VaultItem[], content: ExportContent, passwor
         tags: d.tags,
         secretValue: d.secretValue,
         environment: d.environment,
+        walletAddress: d.walletAddress,
+        seedPhrase: d.seedPhrase,
+        privateKey: d.privateKey,
+        network: d.network,
+        derivationPath: d.derivationPath,
         itemType: i.itemType,
       };
     }),
@@ -230,6 +235,13 @@ function exportBitwarden(items: VaultItem[], content: ExportContent): number {
     if (item.itemType === 'secret') {
       if (d.environment) customFields.push({ name: 'environment', value: d.environment, type: 0 });
       if (d.secretValue) customFields.push({ name: 'secret_key', value: d.secretValue, type: 1 });
+    }
+    if (item.itemType === 'wallet') {
+      if (d.network) customFields.push({ name: 'network', value: d.network, type: 0 });
+      if (d.walletAddress) customFields.push({ name: 'wallet_address', value: d.walletAddress, type: 0 });
+      if (d.seedPhrase) customFields.push({ name: 'seed_phrase', value: d.seedPhrase, type: 1 });
+      if (d.privateKey) customFields.push({ name: 'private_key', value: d.privateKey, type: 1 });
+      if (d.derivationPath) customFields.push({ name: 'derivation_path', value: d.derivationPath, type: 0 });
     }
 
     const base: Record<string, unknown> = {

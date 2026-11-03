@@ -317,6 +317,11 @@ export const App: React.FC = () => {
         totpSecret: item.totpSecret,
         secretValue: item.secretValue,
         environment: item.environment,
+        walletAddress: item.walletAddress,
+        seedPhrase: item.seedPhrase,
+        privateKey: item.privateKey,
+        network: item.network,
+        derivationPath: item.derivationPath,
         tags: item.tags,
       };
 

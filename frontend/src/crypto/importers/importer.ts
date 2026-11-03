@@ -26,6 +26,11 @@ export interface ImportResultItem {
   itemType: ItemType;
   secretValue?: string;
   environment?: string;
+  walletAddress?: string;
+  seedPhrase?: string;
+  privateKey?: string;
+  network?: string;
+  derivationPath?: string;
 }
 
 export interface ParseOutcome {
@@ -198,8 +203,13 @@ function parseOsvaultItems(payload: any): ParseOutcome {
     totpSecret: cleanTotpSecret(i.totpSecret),
     secretValue: i.secretValue,
     environment: i.environment,
+    walletAddress: i.walletAddress,
+    seedPhrase: i.seedPhrase,
+    privateKey: i.privateKey,
+    network: i.network,
+    derivationPath: i.derivationPath,
     tags: sanitizeTags([...(i.tags || []), 'Imported']),
-    itemType: (i.itemType || (i.secretValue ? 'secret' : (i.password ? 'login' : 'note'))) as ItemType,
+    itemType: (i.itemType || (i.walletAddress || i.seedPhrase ? 'wallet' : (i.secretValue ? 'secret' : (i.password ? 'login' : 'note')))) as ItemType,
   }));
   return { formatName: 'OneStop Vault Backup', items };
 }

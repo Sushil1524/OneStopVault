@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Trash2,
   AlertTriangle,
+  Wallet,
 } from 'lucide-react';
 import { VaultItem } from '../types/vault.js';
 import { generateTOTP } from '../crypto/totp.js';
@@ -63,6 +64,51 @@ function getEnvBadgeStyle(env?: string) {
   }
 }
 
+function getNetworkBadgeStyle(network?: string) {
+  switch (network?.toLowerCase()) {
+    case 'ethereum':
+      return { bg: 'rgba(98, 126, 234, 0.15)', text: '#a5b4fc', border: 'rgba(98, 126, 234, 0.35)', short: 'ETH' };
+    case 'bitcoin':
+      return { bg: 'rgba(247, 147, 26, 0.15)', text: '#fdba74', border: 'rgba(247, 147, 26, 0.35)', short: 'BTC' };
+    case 'solana':
+      return { bg: 'rgba(20, 241, 149, 0.15)', text: '#86efac', border: 'rgba(20, 241, 149, 0.35)', short: 'SOL' };
+    case 'polygon':
+      return { bg: 'rgba(130, 71, 229, 0.15)', text: '#c084fc', border: 'rgba(130, 71, 229, 0.35)', short: 'POL' };
+    case 'bnb chain':
+      return { bg: 'rgba(243, 186, 47, 0.15)', text: '#fde047', border: 'rgba(243, 186, 47, 0.35)', short: 'BNB' };
+    case 'multi-chain':
+      return { bg: 'rgba(56, 189, 248, 0.15)', text: '#7dd3fc', border: 'rgba(56, 189, 248, 0.35)', short: 'MULTI' };
+    default:
+      return { bg: 'rgba(255, 255, 255, 0.08)', text: 'var(--text-muted)', border: 'var(--border-color)', short: network ? network.slice(0, 4).toUpperCase() : 'WALLET' };
+  }
+}
+
+function getExplorerUrl(network?: string, address?: string): string | null {
+  if (!address) return null;
+  const cleanAddr = address.trim();
+  switch (network?.toLowerCase()) {
+    case 'ethereum':
+      return `https://etherscan.io/address/${cleanAddr}`;
+    case 'bitcoin':
+      return `https://mempool.space/address/${cleanAddr}`;
+    case 'solana':
+      return `https://solscan.io/account/${cleanAddr}`;
+    case 'polygon':
+      return `https://polygonscan.com/address/${cleanAddr}`;
+    case 'bnb chain':
+      return `https://bscscan.com/address/${cleanAddr}`;
+    default:
+      return null;
+  }
+}
+
+function maskAddress(addr?: string): string {
+  if (!addr) return '';
+  const clean = addr.trim();
+  if (clean.length <= 12) return clean;
+  return `${clean.slice(0, 6)}...${clean.slice(-4)}`;
+}
+
 export const VaultItemCard: React.FC<VaultItemCardProps> = ({
   item,
   onEdit,
@@ -75,9 +121,14 @@ export const VaultItemCard: React.FC<VaultItemCardProps> = ({
   const [expanded, setExpanded] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
+  const [showSeed, setShowSeed] = useState(false);
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
   const userCopy = useCopyButton();
   const passCopy = useCopyButton();
   const secretCopy = useCopyButton();
+  const addressCopy = useCopyButton();
+  const seedCopy = useCopyButton();
+  const privateKeyCopy = useCopyButton();
   const totpCopy = useCopyButton();
 
   const [totpCode, setTotpCode] = useState('');
@@ -119,6 +170,9 @@ export const VaultItemCard: React.FC<VaultItemCardProps> = ({
     : null;
 
   const envBadge = payload.environment ? getEnvBadgeStyle(payload.environment) : null;
+  const networkBadge = payload.network ? getNetworkBadgeStyle(payload.network) : null;
+  const explorerUrl = getExplorerUrl(payload.network, payload.walletAddress);
+  const seedWords = payload.seedPhrase ? payload.seedPhrase.trim().split(/\s+/).filter(Boolean) : [];
 
   const getItemIcon = () => {
     if (faviconUrl) {
@@ -138,6 +192,9 @@ export const VaultItemCard: React.FC<VaultItemCardProps> = ({
     }
     if (item.itemType === 'secret') {
       return <Terminal size={18} color="var(--accent-primary, #60a5fa)" />;
+    }
+    if (item.itemType === 'wallet') {
+      return <Wallet size={18} color="var(--accent-amber, #fbbf24)" />;
     }
     if (item.itemType === 'login') {
       return <KeyRound size={18} color="var(--text-muted)" />;
@@ -179,6 +236,8 @@ export const VaultItemCard: React.FC<VaultItemCardProps> = ({
               ? 'rgba(244, 63, 94, 0.12)'
               : item.itemType === 'secret'
               ? 'rgba(96, 165, 250, 0.12)'
+              : item.itemType === 'wallet'
+              ? 'rgba(245, 158, 11, 0.15)'
               : 'rgba(255, 255, 255, 0.08)',
             display: 'flex',
             alignItems: 'center',
@@ -222,6 +281,8 @@ export const VaultItemCard: React.FC<VaultItemCardProps> = ({
               ? payload.environment
                 ? `${payload.environment} · API Key`
                 : 'Developer Secret'
+              : item.itemType === 'wallet'
+              ? `${payload.network || 'Crypto Wallet'}${payload.walletAddress ? ` · ${maskAddress(payload.walletAddress)}` : ''}`
               : payload.username || hostname || (item.itemType === 'note' ? 'Secure Note' : '—')}
           </div>
         </div>
@@ -241,6 +302,23 @@ export const VaultItemCard: React.FC<VaultItemCardProps> = ({
               }}
             >
               TRASH
+            </span>
+          )}
+
+          {!isDeleted && item.itemType === 'wallet' && payload.network && networkBadge && (
+            <span
+              style={{
+                fontSize: '0.62rem',
+                fontWeight: 700,
+                padding: '2px 6px',
+                borderRadius: '6px',
+                background: networkBadge.bg,
+                color: networkBadge.text,
+                border: `1px solid ${networkBadge.border}`,
+                letterSpacing: '0.5px',
+              }}
+            >
+              {networkBadge.short}
             </span>
           )}
 
@@ -417,6 +495,246 @@ export const VaultItemCard: React.FC<VaultItemCardProps> = ({
                   >
                     {hostname} <ExternalLink size={11} />
                   </a>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Crypto Wallet Fields ── */}
+          {item.itemType === 'wallet' && (
+            <>
+              {/* Network & Derivation Path */}
+              {(payload.network || payload.derivationPath) && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', flexShrink: 0 }}>
+                    Network & Path
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {networkBadge && (
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          background: networkBadge.bg,
+                          color: networkBadge.text,
+                          border: `1px solid ${networkBadge.border}`,
+                        }}
+                      >
+                        {payload.network}
+                      </span>
+                    )}
+                    {payload.derivationPath && (
+                      <span
+                        className="mono"
+                        style={{
+                          fontSize: '0.72rem',
+                          color: 'var(--text-muted)',
+                          padding: '2px 6px',
+                          borderRadius: '6px',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                        }}
+                      >
+                        {payload.derivationPath}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Public Receiving Address */}
+              {payload.walletAddress && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                      Public Address
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {explorerUrl && (
+                        <a
+                          href={explorerUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-ghost"
+                          style={{ padding: '2px 4px', minHeight: 'auto', flexShrink: 0, textDecoration: 'none', color: 'inherit' }}
+                          title="View on block explorer"
+                        >
+                          <ExternalLink size={13} />
+                        </a>
+                      )}
+                      <button
+                        onClick={() => addressCopy.copy(payload.walletAddress!)}
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 4px', minHeight: 'auto', flexShrink: 0 }}
+                        title="Copy address"
+                      >
+                        {addressCopy.copied ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    className="mono"
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      background: 'rgba(0, 0, 0, 0.6)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      fontSize: '0.78rem',
+                      color: '#fff',
+                      wordBreak: 'break-all',
+                      userSelect: 'all',
+                    }}
+                  >
+                    {payload.walletAddress}
+                  </div>
+                </div>
+              )}
+
+              {/* Recovery Seed Phrase */}
+              {payload.seedPhrase && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                        Recovery Seed Phrase
+                      </span>
+                      {seedWords.length > 0 && (
+                        <span
+                          style={{
+                            fontSize: '0.62rem',
+                            fontWeight: 700,
+                            padding: '1px 5px',
+                            borderRadius: '5px',
+                            background: 'rgba(245, 158, 11, 0.15)',
+                            color: '#fbbf24',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                          }}
+                        >
+                          {seedWords.length} words
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <button
+                        onClick={() => setShowSeed(v => !v)}
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 4px', minHeight: 'auto', flexShrink: 0 }}
+                        title={showSeed ? 'Hide seed phrase' : 'Show seed phrase'}
+                      >
+                        {showSeed ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                      <button
+                        onClick={() => seedCopy.copy(payload.seedPhrase!)}
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 4px', minHeight: 'auto', flexShrink: 0 }}
+                        title="Copy seed phrase"
+                      >
+                        {seedCopy.copied ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {showSeed ? (
+                    <div
+                      style={{
+                        padding: '10px',
+                        borderRadius: '8px',
+                        background: 'rgba(0, 0, 0, 0.6)',
+                        border: '1px solid rgba(245, 158, 11, 0.25)',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(95px, 1fr))',
+                        gap: '6px',
+                      }}
+                    >
+                      {seedWords.map((word, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                            fontSize: '0.78rem',
+                          }}
+                        >
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)', minWidth: '16px' }}>
+                            {idx + 1}.
+                          </span>
+                          <span className="mono" style={{ color: '#fff', fontWeight: 500 }}>
+                            {word}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div
+                      className="mono"
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        background: 'rgba(0, 0, 0, 0.6)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        fontSize: '0.8rem',
+                        letterSpacing: '2px',
+                        color: 'var(--text-dim)',
+                        userSelect: 'none',
+                      }}
+                    >
+                      •••• •••• •••• •••• •••• ••••
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Private Key */}
+              {payload.privateKey && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                      Private Key
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <button
+                        onClick={() => setShowPrivateKey(v => !v)}
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 4px', minHeight: 'auto', flexShrink: 0 }}
+                        title={showPrivateKey ? 'Hide private key' : 'Show private key'}
+                      >
+                        {showPrivateKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                      <button
+                        onClick={() => privateKeyCopy.copy(payload.privateKey!)}
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 4px', minHeight: 'auto', flexShrink: 0 }}
+                        title="Copy private key"
+                      >
+                        {privateKeyCopy.copied ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    className="mono"
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      background: 'rgba(0, 0, 0, 0.6)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      fontSize: '0.78rem',
+                      letterSpacing: showPrivateKey ? '0' : '2px',
+                      color: showPrivateKey ? '#fff' : 'var(--text-dim)',
+                      wordBreak: 'break-all',
+                      userSelect: showPrivateKey ? 'all' : 'none',
+                    }}
+                  >
+                    {showPrivateKey ? payload.privateKey : '••••••••••••••••••••••••••••••••••••••••'}
+                  </div>
                 </div>
               )}
             </>

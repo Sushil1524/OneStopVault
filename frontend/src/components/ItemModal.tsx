@@ -4,6 +4,7 @@ import {
   KeyRound,
   FileText,
   Terminal,
+  Wallet,
   Eye,
   EyeOff,
   Sparkles,
@@ -32,8 +33,17 @@ interface ItemModalProps {
   onOpenGenerator: (onSelect: (val: string) => void, mode?: GeneratorTab) => void;
 }
 
-const PRESET_TAGS = ['Social', 'Work', 'Finance', 'Personal', 'Dev', 'API', 'Server', 'Cloud'];
+const PRESET_TAGS = ['Social', 'Work', 'Finance', 'Personal', 'Dev', 'API', 'Server', 'Cloud', 'Crypto'];
 const PRESET_ENVIRONMENTS = ['Production', 'Staging', 'Development', 'Test'];
+const PRESET_CRYPTO_NETWORKS = [
+  { id: 'Ethereum', symbol: 'ETH', color: '#627EEA' },
+  { id: 'Bitcoin', symbol: 'BTC', color: '#F7931A' },
+  { id: 'Solana', symbol: 'SOL', color: '#14F195' },
+  { id: 'Polygon', symbol: 'MATIC', color: '#8247E5' },
+  { id: 'BNB Chain', symbol: 'BNB', color: '#F3BA2F' },
+  { id: 'Multi-Chain', symbol: 'MULTI', color: '#9333EA' },
+  { id: 'Other', symbol: 'OTHER', color: '#A1A1AA' },
+];
 
 const EMPTY_FORM = {
   name: '',
@@ -44,6 +54,11 @@ const EMPTY_FORM = {
   totpSecret: '',
   secretValue: '',
   environment: 'Production',
+  walletAddress: '',
+  seedPhrase: '',
+  privateKey: '',
+  network: 'Ethereum',
+  derivationPath: '',
   favorite: false,
   tags: [] as string[],
 };
@@ -62,10 +77,15 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   const [form, setForm] = useState(EMPTY_FORM);
   const [showPassword, setShowPassword] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
+  const [showSeedPhrase, setShowSeedPhrase] = useState(false);
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [breachCount, setBreachCount] = useState<number | null>(null);
   const [customTagInput, setCustomTagInput] = useState('');
   const [copiedSecret, setCopiedSecret] = useState(false);
+  const [copiedAddress, setCopiedAddress] = useState(false);
+  const [copiedSeed, setCopiedSeed] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
 
   const isItemDeleted = !!initialItem?.decrypted?.deletedAt;
 
@@ -82,6 +102,11 @@ export const ItemModal: React.FC<ItemModalProps> = ({
         totpSecret: d.totpSecret || '',
         secretValue: d.secretValue || '',
         environment: d.environment || 'Production',
+        walletAddress: d.walletAddress || '',
+        seedPhrase: d.seedPhrase || '',
+        privateKey: d.privateKey || '',
+        network: d.network || 'Ethereum',
+        derivationPath: d.derivationPath || '',
         favorite: !!d.favorite,
         tags: Array.isArray(d.tags) ? d.tags : [],
       });
@@ -92,8 +117,13 @@ export const ItemModal: React.FC<ItemModalProps> = ({
     setBreachCount(null);
     setShowPassword(false);
     setShowSecret(false);
+    setShowSeedPhrase(false);
+    setShowPrivateKey(false);
     setCustomTagInput('');
     setCopiedSecret(false);
+    setCopiedAddress(false);
+    setCopiedSeed(false);
+    setCopiedKey(false);
   }, [initialItem, isOpen]);
 
   if (!isOpen) return null;
@@ -153,6 +183,14 @@ export const ItemModal: React.FC<ItemModalProps> = ({
         ...(itemType === 'secret' && {
           secretValue: form.secretValue,
           environment: form.environment,
+          url: form.url,
+        }),
+        ...(itemType === 'wallet' && {
+          walletAddress: form.walletAddress,
+          seedPhrase: form.seedPhrase,
+          privateKey: form.privateKey,
+          network: form.network,
+          derivationPath: form.derivationPath,
           url: form.url,
         }),
         ...(initialItem?.decrypted?.deletedAt ? { deletedAt: initialItem.decrypted.deletedAt } : {}),
@@ -232,7 +270,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                   fontWeight: 600,
                 }}
               >
-                {itemType === 'login' ? 'Login' : itemType === 'secret' ? 'API Key / Secret' : 'Note'}
+                {itemType === 'login' ? 'Login' : itemType === 'secret' ? 'API Key / Secret' : itemType === 'wallet' ? 'Crypto Wallet' : 'Note'}
               </span>
             )}
           </div>
@@ -275,30 +313,38 @@ export const ItemModal: React.FC<ItemModalProps> = ({
 
         {/* Item type selector (for new items) */}
         {!initialItem && (
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '20px' }}>
             <button
               type="button"
               onClick={() => setItemType('login')}
               className={`btn ${itemType === 'login' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ flex: 1, fontSize: '0.825rem', padding: '8px 10px' }}
+              style={{ fontSize: '0.78rem', padding: '8px 4px', gap: '4px' }}
             >
-              <KeyRound size={15} /> Login
+              <KeyRound size={14} /> Login
+            </button>
+            <button
+              type="button"
+              onClick={() => setItemType('wallet')}
+              className={`btn ${itemType === 'wallet' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ fontSize: '0.78rem', padding: '8px 4px', gap: '4px' }}
+            >
+              <Wallet size={14} /> Wallet
             </button>
             <button
               type="button"
               onClick={() => setItemType('secret')}
               className={`btn ${itemType === 'secret' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ flex: 1, fontSize: '0.825rem', padding: '8px 10px' }}
+              style={{ fontSize: '0.78rem', padding: '8px 4px', gap: '4px' }}
             >
-              <Terminal size={15} /> API Key / Secret
+              <Terminal size={14} /> API Key
             </button>
             <button
               type="button"
               onClick={() => setItemType('note')}
               className={`btn ${itemType === 'note' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ flex: 1, fontSize: '0.825rem', padding: '8px 10px' }}
+              style={{ fontSize: '0.78rem', padding: '8px 4px', gap: '4px' }}
             >
-              <FileText size={15} /> Note
+              <FileText size={14} /> Note
             </button>
           </div>
         )}
@@ -323,7 +369,9 @@ export const ItemModal: React.FC<ItemModalProps> = ({
               type="text"
               className="input-field"
               placeholder={
-                itemType === 'secret'
+                itemType === 'wallet'
+                  ? 'e.g. Ledger Primary, DeFi MetaMask, Phantom Solana'
+                  : itemType === 'secret'
                   ? 'e.g. Stripe Production Key, OpenAI API Token, AWS Secret'
                   : 'e.g. GitHub, Google, Netflix'
               }
@@ -331,6 +379,187 @@ export const ItemModal: React.FC<ItemModalProps> = ({
               onChange={set('name')}
             />
           </div>
+
+          {/* ──────────────── Crypto Wallet & Seed Phrase Fields ──────────────── */}
+          {itemType === 'wallet' && (
+            <>
+              {/* Network selector */}
+              <div className="input-group">
+                <label className="input-label">Blockchain Network</label>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                  {PRESET_CRYPTO_NETWORKS.map(net => {
+                    const isSelected = form.network === net.id;
+                    return (
+                      <button
+                        key={net.id}
+                        type="button"
+                        onClick={() => setForm(p => ({ ...p, network: net.id }))}
+                        className="btn"
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '0.75rem',
+                          minHeight: '28px',
+                          borderRadius: '8px',
+                          background: isSelected ? 'var(--accent-primary)' : 'rgba(255,255,255,0.06)',
+                          color: isSelected ? '#000000' : 'var(--text-main)',
+                          fontWeight: isSelected ? 600 : 400,
+                          borderColor: isSelected ? 'transparent' : 'var(--border-color)',
+                          gap: '6px',
+                        }}
+                      >
+                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: net.color }} />
+                        {net.id} ({net.symbol})
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Public Address */}
+              <div className="input-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label className="input-label" style={{ margin: 0 }}>Public / Receiving Address</label>
+                  {form.walletAddress && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(form.walletAddress);
+                        setCopiedAddress(true);
+                        setTimeout(() => setCopiedAddress(false), 2000);
+                      }}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px', fontSize: '0.75rem', gap: '4px' }}
+                    >
+                      {copiedAddress ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+                      <span>{copiedAddress ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  className="input-field mono"
+                  placeholder="0x... or bc1... or Solana address"
+                  value={form.walletAddress}
+                  onChange={set('walletAddress')}
+                />
+              </div>
+
+              {/* Recovery Seed Phrase */}
+              <div className="input-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label className="input-label" style={{ margin: 0 }}>Seed Phrase (12 or 24 Recovery Words)</label>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {form.seedPhrase && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(form.seedPhrase);
+                          setCopiedSeed(true);
+                          setTimeout(() => setCopiedSeed(false), 2000);
+                        }}
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 6px', fontSize: '0.75rem', gap: '4px' }}
+                      >
+                        {copiedSeed ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+                        <span>{copiedSeed ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowSeedPhrase(v => !v)}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px' }}
+                      title={showSeedPhrase ? 'Mask Seed Phrase' : 'Reveal Seed Phrase'}
+                    >
+                      {showSeedPhrase ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+
+                <textarea
+                  rows={3}
+                  className="input-field mono"
+                  style={{
+                    fontSize: '0.85rem',
+                    letterSpacing: showSeedPhrase ? '0' : '2px',
+                    lineHeight: 1.6,
+                    resize: 'vertical',
+                    background: 'rgba(15, 23, 42, 0.95)',
+                  }}
+                  placeholder="Enter 12, 18, or 24 recovery words separated by spaces…"
+                  value={form.seedPhrase}
+                  onChange={set('seedPhrase')}
+                />
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', margin: '4px 0 0' }}>
+                  Client-side encrypted with AES-256-GCM. Never transmitted in plaintext.
+                </p>
+              </div>
+
+              {/* Private Key */}
+              <div className="input-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label className="input-label" style={{ margin: 0 }}>Private Key (Optional)</label>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {form.privateKey && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(form.privateKey);
+                          setCopiedKey(true);
+                          setTimeout(() => setCopiedKey(false), 2000);
+                        }}
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 6px', fontSize: '0.75rem', gap: '4px' }}
+                      >
+                        {copiedKey ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+                        <span>{copiedKey ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowPrivateKey(v => !v)}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px' }}
+                      title={showPrivateKey ? 'Mask Private Key' : 'Reveal Private Key'}
+                    >
+                      {showPrivateKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+                <input
+                  type={showPrivateKey ? 'text' : 'password'}
+                  className="input-field mono"
+                  placeholder="0x... or Base58 raw private key"
+                  value={form.privateKey}
+                  onChange={set('privateKey')}
+                />
+              </div>
+
+              {/* Derivation Path & Explorer URL */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="input-group" style={{ marginBottom: 0 }}>
+                  <label className="input-label">Derivation Path</label>
+                  <input
+                    type="text"
+                    className="input-field mono"
+                    placeholder="m/44'/60'/0'/0/0"
+                    value={form.derivationPath}
+                    onChange={set('derivationPath')}
+                  />
+                </div>
+                <div className="input-group" style={{ marginBottom: 0 }}>
+                  <label className="input-label">Explorer / DApp URL</label>
+                  <input
+                    type="url"
+                    className="input-field"
+                    placeholder="https://etherscan.io"
+                    value={form.url}
+                    onChange={set('url')}
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           {/* ──────────────── Developer Secret & API Key Fields ──────────────── */}
           {itemType === 'secret' && (

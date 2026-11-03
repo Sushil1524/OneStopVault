@@ -1,5 +1,5 @@
-// Vault item types — login (with optional 2FA), secure note, or developer secret / API key
-export type ItemType = 'login' | 'note' | 'secret';
+// Vault item types — login (with optional 2FA), secure note, developer secret, or crypto wallet
+export type ItemType = 'login' | 'note' | 'secret' | 'wallet';
 
 // The decrypted contents of a vault item (stored in browser RAM only)
 export interface DecryptedPayload {
@@ -9,12 +9,19 @@ export interface DecryptedPayload {
   url?: string;
   notes?: string;
   totpSecret?: string; // Base32 secret for TOTP 2FA codes
-  tags?: string[];     // Category tags (e.g. Social, Work, Finance, Personal, API, Dev)
+  tags?: string[];     // Category tags (e.g. Social, Work, Finance, Personal, API, Dev, Crypto)
   favorite?: boolean;
   
   // Developer Secrets & API Keys
   secretValue?: string; // Raw API Key, Token, Private Key, Connection String
   environment?: string; // e.g. Production, Staging, Development, Test
+
+  // Crypto Wallet & Seed Phrase Storage
+  walletAddress?: string;  // Public receiving address (e.g. 0x..., bc1..., sol...)
+  seedPhrase?: string;     // 12, 18, or 24-word recovery seed phrase
+  privateKey?: string;     // Raw hex or Base58 private key
+  network?: string;        // Blockchain network (e.g. Ethereum, Bitcoin, Solana, Polygon, etc.)
+  derivationPath?: string; // Derivation path (e.g. m/44'/60'/0'/0/0)
 
   // Soft Delete / Trash Recovery
   deletedAt?: number;   // Timestamp (ms) when item was moved to trash; undefined if active
