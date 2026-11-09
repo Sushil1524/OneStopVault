@@ -16,6 +16,7 @@ import { WorkerClient } from './api/workerClient.js';
 import { encryptVaultItem, decryptVaultItem } from './crypto/aesGcm.js';
 import { calculateVaultChecksum } from './crypto/checksum.js';
 import { ImportResultItem } from './crypto/importers/importer.js';
+import { ColdWalletResult } from './crypto/coldWalletGenerator.js';
 import {
   isQuickUnlockConfigured,
   hasQuickPin,
@@ -444,6 +445,28 @@ export const App: React.FC = () => {
     setIsGeneratorOpen(true);
   };
 
+  const handleSaveColdWalletToVault = (wallet: ColdWalletResult) => {
+    setEditingItem({
+      id: '',
+      itemType: 'wallet',
+      ciphertext: '',
+      iv: '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      decrypted: {
+        name: `${wallet.network} Cold Wallet`,
+        walletAddress: wallet.walletAddress,
+        seedPhrase: wallet.mnemonic,
+        privateKey: wallet.privateKey,
+        network: wallet.network,
+        derivationPath: wallet.derivationPath,
+        tags: ['Cold Wallet', 'Crypto'],
+      },
+    });
+    setIsGeneratorOpen(false);
+    setIsItemModalOpen(true);
+  };
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Navbar
@@ -506,6 +529,7 @@ export const App: React.FC = () => {
         isOpen={isGeneratorOpen}
         onClose={() => setIsGeneratorOpen(false)}
         onSelectPassword={onGeneratorSelect}
+        onSaveColdWalletToVault={handleSaveColdWalletToVault}
         initialMode={generatorInitialMode}
       />
 

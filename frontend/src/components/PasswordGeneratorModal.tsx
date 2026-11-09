@@ -14,6 +14,13 @@ import {
   UserCheck,
   Mail,
   Info,
+  Wallet,
+  Printer,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  Shield,
+  Lock,
 } from 'lucide-react';
 import { generateSecurePassphrase, calculatePassphraseEntropy, PASSPHRASE_WORDLIST } from '../crypto/wordlist.js';
 import {
@@ -26,13 +33,19 @@ import {
   IDENTITY_ADJECTIVES,
   IDENTITY_NOUNS,
 } from '../crypto/identityGenerator.js';
+import {
+  generateColdWallet,
+  ColdWalletResult,
+  CryptoNetworkId,
+} from '../crypto/coldWalletGenerator.js';
 
-export type GeneratorTab = 'password' | 'passphrase' | 'username' | 'email';
+export type GeneratorTab = 'password' | 'passphrase' | 'wallet' | 'username' | 'email';
 
 interface PasswordGeneratorModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectPassword?: (value: string) => void;
+  onSaveColdWalletToVault?: (wallet: ColdWalletResult) => void;
   initialMode?: GeneratorTab;
 }
 
@@ -40,6 +53,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
   isOpen,
   onClose,
   onSelectPassword,
+  onSaveColdWalletToVault,
   initialMode = 'password',
 }) => {
   // Mode selection
@@ -58,6 +72,17 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
   const [separator, setSeparator] = useState<string>('-');
   const [capitalize, setCapitalize] = useState<boolean>(false);
   const [includeNumber, setIncludeNumber] = useState<boolean>(true);
+
+  // ── Cold Wallet state ──
+  const [walletWordCount, setWalletWordCount] = useState<12 | 18 | 24>(12);
+  const [walletNetwork, setWalletNetwork] = useState<CryptoNetworkId>('Ethereum');
+  const [walletPassphrase, setWalletPassphrase] = useState<string>('');
+  const [coldWallet, setColdWallet] = useState<ColdWalletResult | null>(null);
+  const [showSeed, setShowSeed] = useState<boolean>(true);
+  const [showPrivKey, setShowPrivKey] = useState<boolean>(false);
+  const [copiedAddress, setCopiedAddress] = useState<boolean>(false);
+  const [copiedSeed, setCopiedSeed] = useState<boolean>(false);
+  const [copiedPrivKey, setCopiedPrivKey] = useState<boolean>(false);
 
   // ── Username state ──
   const [usernameStyle, setUsernameStyle] = useState<UsernameStyle>('words');
@@ -107,6 +132,18 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
   const generate = () => {
     setIsRotating(true);
     setTimeout(() => setIsRotating(false), 300);
+
+    if (activeTab === 'wallet') {
+      generateColdWallet({
+        wordCount: walletWordCount,
+        network: walletNetwork,
+        passphrase: walletPassphrase,
+      }).then((wallet) => {
+        setColdWallet(wallet);
+        setGeneratedValue(wallet.mnemonic);
+      });
+      return;
+    }
 
     if (activeTab === 'passphrase') {
       const phrase = generateSecurePassphrase({
@@ -195,7 +232,67 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
     emailMode,
     plusEmail,
     domain,
+    // Cold wallet deps
+    walletWordCount,
+    walletNetwork,
+    walletPassphrase,
   ]);
+
+  const handlePrintPaperWallet = () => {
+    if (!coldWallet) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>OneStop - Cold Wallet Paper Backup</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; margin: 40px; color: #111; }
+            .card { border: 2px dashed #222; border-radius: 12px; padding: 24px; max-width: 650px; margin: 0 auto; }
+            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #222; padding-bottom: 12px; margin-bottom: 16px; }
+            .badge { background: #eee; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+            .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+            .word { border: 1px solid #ccc; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: monospace; }
+            .word-idx { color: #666; margin-right: 6px; font-size: 11px; }
+            .field { margin: 8px 0; word-break: break-all; font-family: monospace; font-size: 12px; }
+            .warning { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px 14px; border-radius: 6px; font-size: 12px; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="header">
+              <div>
+                <h2 style="margin: 0;">OneStop Cold Wallet Backup</h2>
+                <p style="margin: 4px 0 0; font-size: 12px; color: #666;">Air-Gapped Offline Paper Storage · ${new Date().toLocaleDateString()}</p>
+              </div>
+              <div class="badge">${coldWallet.network} · ${coldWallet.wordCount} Words</div>
+            </div>
+            <div>
+              <strong>Public Receiving Address:</strong>
+              <div class="field" style="background: #f4f4f5; padding: 8px 12px; border-radius: 6px;">${coldWallet.walletAddress}</div>
+            </div>
+            <div style="margin-top: 16px;">
+              <strong>BIP-39 Recovery Seed Phrase:</strong>
+              <div class="grid">
+                ${coldWallet.mnemonicWords.map((w, i) => `<div class="word"><span class="word-idx">${i + 1}.</span>${w}</div>`).join('')}
+              </div>
+            </div>
+            <div>
+              <strong>Private Key:</strong>
+              <div class="field" style="background: #f4f4f5; padding: 8px 12px; border-radius: 6px;">${coldWallet.privateKey}</div>
+            </div>
+            <div style="font-size: 12px; color: #666;">Derivation Path: <code>${coldWallet.derivationPath}</code></div>
+            <div class="warning">
+              ⚠️ <strong>SECURITY WARNING:</strong> Anyone who obtains this paper sheet has complete, irreversible control over your crypto assets. Store this in a fireproof, waterproof safe. Never photograph or upload to the internet.
+            </div>
+          </div>
+          <script>window.print();</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
 
   if (!isOpen) return null;
 
@@ -208,12 +305,14 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
   const getSelectButtonLabel = () => {
     if (activeTab === 'username') return 'Use This Username';
     if (activeTab === 'email') return 'Use This Email';
+    if (activeTab === 'wallet') return 'Use This Wallet Seed';
     return 'Use This Password';
   };
 
   const getSelectButtonIcon = () => {
     if (activeTab === 'username') return <UserCheck size={16} />;
     if (activeTab === 'email') return <Mail size={16} />;
+    if (activeTab === 'wallet') return <Wallet size={16} />;
     return <Sparkles size={16} />;
   };
 
@@ -257,49 +356,51 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
           </button>
         </div>
 
-        {/* Generated Value Preview Box */}
-        <div
-          style={{
-            position: 'relative',
-            background: 'rgba(15, 23, 42, 0.9)',
-            border: '1px solid var(--border-glow)',
-            borderRadius: 'var(--radius-md)',
-            padding: '16px',
-            marginBottom: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '12px',
-          }}
-        >
-          <span
-            className="mono"
+        {/* Generated Value Preview Box (For Password, Passphrase, Username, Email) */}
+        {activeTab !== 'wallet' && (
+          <div
             style={{
-              fontSize: generatedValue.length > 32 ? '0.85rem' : generatedValue.length > 22 ? '1.02rem' : '1.18rem',
-              fontWeight: 600,
-              color: 'var(--text-main)',
-              wordBreak: 'break-all',
-              userSelect: 'all',
-              letterSpacing: activeTab === 'password' ? '0.04em' : '0.01em',
+              position: 'relative',
+              background: 'rgba(15, 23, 42, 0.9)',
+              border: '1px solid var(--border-glow)',
+              borderRadius: 'var(--radius-md)',
+              padding: '16px',
+              marginBottom: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
             }}
           >
-            {generatedValue}
-          </span>
-
-          <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-            <button
-              onClick={generate}
-              className="btn btn-ghost"
-              style={{ padding: '8px', transition: 'transform 0.3s ease', transform: isRotating ? 'rotate(180deg)' : 'none' }}
-              title="Regenerate"
+            <span
+              className="mono"
+              style={{
+                fontSize: generatedValue.length > 32 ? '0.85rem' : generatedValue.length > 22 ? '1.02rem' : '1.18rem',
+                fontWeight: 600,
+                color: 'var(--text-main)',
+                wordBreak: 'break-all',
+                userSelect: 'all',
+                letterSpacing: activeTab === 'password' ? '0.04em' : '0.01em',
+              }}
             >
-              <RefreshCw size={18} />
-            </button>
-            <button onClick={handleCopy} className="btn btn-primary" style={{ padding: '8px 12px' }} title="Copy to clipboard">
-              {copied ? <Check size={18} color="var(--accent-emerald)" /> : <Copy size={18} />}
-            </button>
+              {generatedValue}
+            </span>
+
+            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+              <button
+                onClick={generate}
+                className="btn btn-ghost"
+                style={{ padding: '8px', transition: 'transform 0.3s ease', transform: isRotating ? 'rotate(180deg)' : 'none' }}
+                title="Regenerate"
+              >
+                <RefreshCw size={18} />
+              </button>
+              <button onClick={handleCopy} className="btn btn-primary" style={{ padding: '8px 12px' }} title="Copy to clipboard">
+                {copied ? <Check size={18} color="var(--accent-emerald)" /> : <Copy size={18} />}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Strength & Entropy Indicator (Only for Password & Passphrase) */}
         {(activeTab === 'password' || activeTab === 'passphrase') ? (
@@ -324,6 +425,14 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
               />
             </div>
           </div>
+        ) : activeTab === 'wallet' ? (
+          /* Info pill for Cold Wallet */
+          <div style={{ marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: '#fbbf24' }}>
+            <Lock size={15} style={{ flexShrink: 0 }} />
+            <span>
+              <strong>100% Air-Gapped & Offline Capable.</strong> Generated via browser Web Crypto CSPRNG (BIP-39). Keys and seed phrase never touch any server.
+            </span>
+          </div>
         ) : activeTab === 'username' ? (
           /* Info pill for Username */
           <div style={{ marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(96, 165, 250, 0.1)', border: '1px solid rgba(96, 165, 250, 0.25)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: '#93c5fd' }}>
@@ -347,10 +456,11 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
         {/* Generator Controls */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           {/* Mode Selector Tabs */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', background: 'rgba(255, 255, 255, 0.05)', padding: '4px', borderRadius: 'var(--radius-md)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4px', background: 'rgba(255, 255, 255, 0.05)', padding: '4px', borderRadius: 'var(--radius-md)' }}>
             {[
               { id: 'password', label: 'Password', icon: <Sliders size={13} /> },
               { id: 'passphrase', label: 'Passphrase', icon: <Type size={13} /> },
+              { id: 'wallet', label: 'Cold Wallet', icon: <Wallet size={13} /> },
               { id: 'username', label: 'Username', icon: <User size={13} /> },
               { id: 'email', label: 'Email Alias', icon: <AtSign size={13} /> },
             ].map((tab) => {
@@ -545,6 +655,314 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
 
               <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', background: 'rgba(255, 255, 255, 0.03)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
                 Powered by a curated <strong>2,048-word dictionary</strong> ({PASSPHRASE_WORDLIST.length} words, 11 bits/word) using cryptographic random sampling.
+              </div>
+            </div>
+          )}
+
+          {/* ──────────────── TAB: COLD WALLET GENERATOR ──────────────── */}
+          {activeTab === 'wallet' && coldWallet && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Word Count & Network Config */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label className="input-label" style={{ marginBottom: '6px' }}>Recovery Phrase Length</label>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {([12, 18, 24] as const).map(count => (
+                      <button
+                        key={count}
+                        type="button"
+                        onClick={() => setWalletWordCount(count)}
+                        className="btn"
+                        style={{
+                          flex: 1,
+                          padding: '6px 4px',
+                          fontSize: '0.75rem',
+                          minHeight: '30px',
+                          background: walletWordCount === count ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.06)',
+                          color: walletWordCount === count ? '#000' : 'var(--text-main)',
+                          fontWeight: walletWordCount === count ? 600 : 400,
+                          border: '1px solid var(--border-color)',
+                        }}
+                      >
+                        {count}w
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="input-label" style={{ marginBottom: '6px' }}>Blockchain Network</label>
+                  <select
+                    className="input-field"
+                    style={{ height: '32px', fontSize: '0.78rem', padding: '4px 8px' }}
+                    value={walletNetwork}
+                    onChange={(e) => setWalletNetwork(e.target.value as CryptoNetworkId)}
+                  >
+                    <option value="Ethereum">Ethereum (ETH / EVM)</option>
+                    <option value="Bitcoin">Bitcoin (BTC SegWit)</option>
+                    <option value="Solana">Solana (SOL)</option>
+                    <option value="Polygon">Polygon (MATIC)</option>
+                    <option value="BNB Chain">BNB Chain (BNB)</option>
+                    <option value="Multi-Chain">Multi-Chain Universal</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Numbered Seed Phrase Chip Grid */}
+              <div
+                style={{
+                  background: 'rgba(15, 23, 42, 0.95)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '14px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#fbbf24' }}>
+                      BIP-39 Recovery Seed Phrase
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '0.62rem',
+                        fontWeight: 700,
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                        background: 'rgba(245, 158, 11, 0.15)',
+                        color: '#fbbf24',
+                      }}
+                    >
+                      {coldWallet.entropyBits} bits
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowSeed(v => !v)}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px', minHeight: 'auto' }}
+                      title={showSeed ? 'Mask Words' : 'Reveal Words'}
+                    >
+                      {showSeed ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(coldWallet.mnemonic);
+                        setCopiedSeed(true);
+                        setTimeout(() => setCopiedSeed(false), 2000);
+                      }}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px', minHeight: 'auto', fontSize: '0.72rem', gap: '4px' }}
+                    >
+                      {copiedSeed ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+                      <span>{copiedSeed ? 'Copied' : 'Copy'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={generate}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px', minHeight: 'auto', transition: 'transform 0.3s ease', transform: isRotating ? 'rotate(180deg)' : 'none' }}
+                      title="Generate new phrase"
+                    >
+                      <RefreshCw size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {showSeed ? (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: '6px',
+                    }}
+                  >
+                    {coldWallet.mnemonicWords.map((word, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '5px 8px',
+                          borderRadius: '6px',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          fontSize: '0.78rem',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)', minWidth: '16px' }}>
+                          {idx + 1}.
+                        </span>
+                        <span className="mono" style={{ color: '#fff', fontWeight: 500 }}>
+                          {word}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    className="mono"
+                    style={{
+                      padding: '16px',
+                      textAlign: 'center',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                      borderRadius: '6px',
+                      color: 'var(--text-dim)',
+                      letterSpacing: '2px',
+                    }}
+                  >
+                    •••• •••• •••• •••• •••• ••••
+                  </div>
+                )}
+              </div>
+
+              {/* Public Receiving Address */}
+              <div
+                style={{
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '10px 12px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                    Public Receiving Address ({coldWallet.network})
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    {coldWallet.explorerUrl && (
+                      <a
+                        href={coldWallet.explorerUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 5px', minHeight: 'auto', textDecoration: 'none', color: 'inherit' }}
+                        title="View on Explorer"
+                      >
+                        <ExternalLink size={12} />
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(coldWallet.walletAddress);
+                        setCopiedAddress(true);
+                        setTimeout(() => setCopiedAddress(false), 2000);
+                      }}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px', minHeight: 'auto', fontSize: '0.72rem', gap: '4px' }}
+                    >
+                      {copiedAddress ? <Check size={12} color="var(--accent-emerald)" /> : <Copy size={12} />}
+                      <span>{copiedAddress ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                </div>
+                <div
+                  className="mono"
+                  style={{
+                    fontSize: '0.78rem',
+                    color: '#fff',
+                    wordBreak: 'break-all',
+                    background: 'rgba(0, 0, 0, 0.5)',
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    userSelect: 'all',
+                  }}
+                >
+                  {coldWallet.walletAddress}
+                </div>
+              </div>
+
+              {/* Private Key */}
+              <div
+                style={{
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '10px 12px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                      Private Key
+                    </span>
+                    <span className="mono" style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>
+                      ({coldWallet.derivationPath})
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowPrivKey(v => !v)}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 5px', minHeight: 'auto' }}
+                      title={showPrivKey ? 'Hide Key' : 'Reveal Key'}
+                    >
+                      {showPrivKey ? <EyeOff size={12} /> : <Eye size={12} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(coldWallet.privateKey);
+                        setCopiedPrivKey(true);
+                        setTimeout(() => setCopiedPrivKey(false), 2000);
+                      }}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px', minHeight: 'auto', fontSize: '0.72rem', gap: '4px' }}
+                    >
+                      {copiedPrivKey ? <Check size={12} color="var(--accent-emerald)" /> : <Copy size={12} />}
+                      <span>{copiedPrivKey ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                </div>
+                <div
+                  className="mono"
+                  style={{
+                    fontSize: '0.75rem',
+                    letterSpacing: showPrivKey ? '0' : '2px',
+                    color: showPrivKey ? '#fff' : 'var(--text-dim)',
+                    wordBreak: 'break-all',
+                    background: 'rgba(0, 0, 0, 0.5)',
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    userSelect: showPrivKey ? 'all' : 'none',
+                  }}
+                >
+                  {showPrivKey ? coldWallet.privateKey : '••••••••••••••••••••••••••••••••••••••••'}
+                </div>
+              </div>
+
+              {/* Cold Storage Actions */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onSaveColdWalletToVault) {
+                      onSaveColdWalletToVault(coldWallet);
+                      onClose();
+                    } else if (onSelectPassword) {
+                      onSelectPassword(coldWallet.mnemonic);
+                      onClose();
+                    }
+                  }}
+                  className="btn btn-primary"
+                  style={{ padding: '8px 12px', fontSize: '0.8rem', gap: '6px' }}
+                >
+                  <Shield size={14} /> Save to Vault
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePrintPaperWallet}
+                  className="btn btn-secondary"
+                  style={{ padding: '8px 12px', fontSize: '0.8rem', gap: '6px' }}
+                >
+                  <Printer size={14} /> Print Paper Wallet
+                </button>
               </div>
             </div>
           )}
@@ -784,7 +1202,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
           )}
 
           {/* Action / Select button if invoked by ItemModal */}
-          {onSelectPassword && (
+          {onSelectPassword && activeTab !== 'wallet' && (
             <button
               onClick={() => {
                 onSelectPassword(generatedValue);

@@ -71,7 +71,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 OneStop <span style={{ color: 'var(--accent-primary)' }}>Vault</span>
               </h1>
               <p className="hide-mobile" style={{ fontSize: '0.7rem', color: 'var(--text-dim)', margin: 0 }}>
-                Cloudflare D1 · Web Crypto · Zero-Knowledge
+                Key Vault · Cold Wallet Generator · Zero-Knowledge
               </p>
             </div>
           </div>

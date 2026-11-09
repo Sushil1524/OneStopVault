@@ -1,6 +1,6 @@
-# OneStop Vault - Zero-Knowledge Password Manager
+# OneStop Vault - Zero-Knowledge Credential Manager & Cold Wallet 
 
-A high-security zero-knowledge password manager with a **React + Vite frontend (Vercel deployment)** and a **Cloudflare Workers API + D1 SQLite backend**, protected by browser Web Crypto API (PBKDF2 600,000 iterations, AES-256-GCM), server-side pepper HMAC, and dual-layer checksum synchronization.
+A high-security zero-knowledge Credential Manager Vault with an air-gapped cold wallet generator with a **React + Vite frontend (Vercel deployment)** and a **Cloudflare Workers API + D1 SQLite backend**, protected by browser Web Crypto API (PBKDF2 600,000 iterations, AES-256-GCM), server-side pepper HMAC, and dual-layer checksum synchronization.
 
 ---
 

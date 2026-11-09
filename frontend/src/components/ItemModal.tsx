@@ -21,6 +21,7 @@ import {
 import { ItemType, DecryptedPayload, VaultItem } from '../types/vault.js';
 import { checkPasswordBreach } from '../crypto/hibp.js';
 import { GeneratorTab } from './PasswordGeneratorModal.js';
+import { generateColdWallet } from '../crypto/coldWalletGenerator.js';
 
 interface ItemModalProps {
   isOpen: boolean;
@@ -413,6 +414,36 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Air-Gapped Cold Wallet Quick Actions */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await generateColdWallet({ network: form.network as any });
+                    setForm(p => ({
+                      ...p,
+                      name: p.name || `${p.network} Cold Wallet`,
+                      walletAddress: res.walletAddress,
+                      seedPhrase: res.mnemonic,
+                      privateKey: res.privateKey,
+                      derivationPath: res.derivationPath,
+                    }));
+                  }}
+                  className="btn btn-secondary"
+                  style={{ flex: 1, padding: '7px 10px', fontSize: '0.78rem', gap: '6px' }}
+                >
+                  <Sparkles size={13} color="var(--accent-amber)" /> Generate Air-Gapped Wallet
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenGenerator((val) => setForm(p => ({ ...p, seedPhrase: val })), 'wallet')}
+                  className="btn btn-ghost"
+                  style={{ padding: '7px 10px', fontSize: '0.78rem', gap: '6px' }}
+                >
+                  <Wallet size={13} /> Full Generator
+                </button>
               </div>
 
               {/* Public Address */}
