@@ -531,6 +531,7 @@ export const App: React.FC = () => {
         onSelectPassword={onGeneratorSelect}
         onSaveColdWalletToVault={handleSaveColdWalletToVault}
         initialMode={generatorInitialMode}
+        isLoggedIn={Boolean(session)}
       />
 
       <BreachCheckModal
