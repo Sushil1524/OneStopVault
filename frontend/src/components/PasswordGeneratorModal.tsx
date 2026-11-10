@@ -47,6 +47,7 @@ interface PasswordGeneratorModalProps {
   onSelectPassword?: (value: string) => void;
   onSaveColdWalletToVault?: (wallet: ColdWalletResult) => void;
   initialMode?: GeneratorTab;
+  isLoggedIn?: boolean;
 }
 
 export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
@@ -55,9 +56,15 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
   onSelectPassword,
   onSaveColdWalletToVault,
   initialMode = 'password',
+  isLoggedIn = true,
 }) => {
+  const showWalletTab = isLoggedIn !== false;
+
   // Mode selection
-  const [activeTab, setActiveTab] = useState<GeneratorTab>(initialMode);
+  const [activeTab, setActiveTab] = useState<GeneratorTab>(() => {
+    if (!showWalletTab && initialMode === 'wallet') return 'password';
+    return initialMode;
+  });
 
   // ── Random Password state ──
   const [length, setLength] = useState<number>(18);
@@ -81,6 +88,8 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
   const [showSeed, setShowSeed] = useState<boolean>(true);
   const [showPrivKey, setShowPrivKey] = useState<boolean>(false);
   const [copiedAddress, setCopiedAddress] = useState<boolean>(false);
+  const [copiedLegacy, setCopiedLegacy] = useState<boolean>(false);
+  const [copiedPubKey, setCopiedPubKey] = useState<boolean>(false);
   const [copiedSeed, setCopiedSeed] = useState<boolean>(false);
   const [copiedPrivKey, setCopiedPrivKey] = useState<boolean>(false);
 
@@ -104,9 +113,13 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
   // Reset initial mode when opening modal
   useEffect(() => {
     if (isOpen) {
-      setActiveTab(initialMode);
+      if (!showWalletTab && initialMode === 'wallet') {
+        setActiveTab('password');
+      } else {
+        setActiveTab(initialMode);
+      }
     }
-  }, [isOpen, initialMode]);
+  }, [isOpen, initialMode, showWalletTab]);
 
   // Calculate entropy for password modes
   const entropy = useMemo(() => {
@@ -272,6 +285,15 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
               <strong>Public Receiving Address:</strong>
               <div class="field" style="background: #f4f4f5; padding: 8px 12px; border-radius: 6px;">${coldWallet.walletAddress}</div>
             </div>
+            ${coldWallet.legacyAddress ? `
+            <div style="margin-top: 8px;">
+              <strong>Legacy Address (P2PKH):</strong>
+              <div class="field" style="background: #f4f4f5; padding: 8px 12px; border-radius: 6px;">${coldWallet.legacyAddress}</div>
+            </div>` : ''}
+            <div style="margin-top: 8px;">
+              <strong>Public Key:</strong>
+              <div class="field" style="background: #f4f4f5; padding: 8px 12px; border-radius: 6px; font-size: 11px;">${coldWallet.publicKey}</div>
+            </div>
             <div style="margin-top: 16px;">
               <strong>BIP-39 Recovery Seed Phrase:</strong>
               <div class="grid">
@@ -335,24 +357,19 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="glass-panel animate-fade-in"
-        style={{
-          width: '100%',
-          maxWidth: '540px',
-          maxHeight: '92vh',
-          overflowY: 'auto',
-          padding: '24px',
-        }}
+        className="glass-panel animate-fade-in generator-modal-panel"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <KeyRound size={22} color="var(--accent-primary)" />
-            <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Identity & Credential Generator</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            <KeyRound size={20} color="var(--accent-primary)" style={{ flexShrink: 0 }} />
+            <h2 style={{ fontSize: '1.15rem', margin: 0, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              Identity & Credential Generator
+            </h2>
           </div>
           <button onClick={onClose} className="btn btn-ghost" style={{ padding: '6px' }}>
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
@@ -364,22 +381,24 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
               background: 'rgba(15, 23, 42, 0.9)',
               border: '1px solid var(--border-glow)',
               borderRadius: 'var(--radius-md)',
-              padding: '16px',
+              padding: '12px 14px',
               marginBottom: '14px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: '12px',
+              gap: '10px',
             }}
           >
             <span
               className="mono"
               style={{
-                fontSize: generatedValue.length > 32 ? '0.85rem' : generatedValue.length > 22 ? '1.02rem' : '1.18rem',
+                fontSize: generatedValue.length > 28 ? '0.88rem' : generatedValue.length > 20 ? '0.98rem' : '1.12rem',
                 fontWeight: 600,
                 color: 'var(--text-main)',
                 wordBreak: 'break-all',
+                overflowWrap: 'break-word',
                 userSelect: 'all',
+                lineHeight: 1.35,
                 letterSpacing: activeTab === 'password' ? '0.04em' : '0.01em',
               }}
             >
@@ -390,13 +409,13 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
               <button
                 onClick={generate}
                 className="btn btn-ghost"
-                style={{ padding: '8px', transition: 'transform 0.3s ease', transform: isRotating ? 'rotate(180deg)' : 'none' }}
+                style={{ padding: '8px', minHeight: 'auto', transition: 'transform 0.3s ease', transform: isRotating ? 'rotate(180deg)' : 'none' }}
                 title="Regenerate"
               >
-                <RefreshCw size={18} />
+                <RefreshCw size={17} />
               </button>
-              <button onClick={handleCopy} className="btn btn-primary" style={{ padding: '8px 12px' }} title="Copy to clipboard">
-                {copied ? <Check size={18} color="var(--accent-emerald)" /> : <Copy size={18} />}
+              <button onClick={handleCopy} className="btn btn-primary" style={{ padding: '8px 12px', minHeight: 'auto' }} title="Copy to clipboard">
+                {copied ? <Check size={17} color="var(--accent-emerald)" /> : <Copy size={17} />}
               </button>
             </div>
           </div>
@@ -404,7 +423,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
 
         {/* Strength & Entropy Indicator (Only for Password & Passphrase) */}
         {(activeTab === 'password' || activeTab === 'passphrase') ? (
-          <div style={{ marginBottom: '18px' }}>
+          <div style={{ marginBottom: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.8rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <ShieldCheck size={14} color={strength.color} />
@@ -427,7 +446,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
           </div>
         ) : activeTab === 'wallet' ? (
           /* Info pill for Cold Wallet */
-          <div style={{ marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: '#fbbf24' }}>
+          <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: '#fbbf24' }}>
             <Lock size={15} style={{ flexShrink: 0 }} />
             <span>
               <strong>100% Air-Gapped & Offline Capable.</strong> Generated via browser Web Crypto CSPRNG (BIP-39). Keys and seed phrase never touch any server.
@@ -435,7 +454,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
           </div>
         ) : activeTab === 'username' ? (
           /* Info pill for Username */
-          <div style={{ marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(96, 165, 250, 0.1)', border: '1px solid rgba(96, 165, 250, 0.25)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: '#93c5fd' }}>
+          <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(96, 165, 250, 0.1)', border: '1px solid rgba(96, 165, 250, 0.25)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: '#93c5fd' }}>
             <Info size={15} style={{ flexShrink: 0 }} />
             <span>
               <strong>{IDENTITY_ADJECTIVES.length} Adjectives × {IDENTITY_NOUNS.length} Nouns</strong> (17.9M+ combos). 100% separate from vault passcode words.
@@ -443,7 +462,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
           </div>
         ) : (
           /* Info pill for Email */
-          <div style={{ marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: '#6ee7b7' }}>
+          <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: '#6ee7b7' }}>
             <Info size={15} style={{ flexShrink: 0 }} />
             <span>
               {emailMode === 'plus'
@@ -454,37 +473,67 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
         )}
 
         {/* Generator Controls */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          {/* Mode Selector Tabs */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4px', background: 'rgba(255, 255, 255, 0.05)', padding: '4px', borderRadius: 'var(--radius-md)' }}>
-            {[
-              { id: 'password', label: 'Password', icon: <Sliders size={13} /> },
-              { id: 'passphrase', label: 'Passphrase', icon: <Type size={13} /> },
-              { id: 'wallet', label: 'Cold Wallet', icon: <Wallet size={13} /> },
-              { id: 'username', label: 'Username', icon: <User size={13} /> },
-              { id: 'email', label: 'Email Alias', icon: <AtSign size={13} /> },
-            ].map((tab) => {
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as GeneratorTab)}
-                  className="btn"
-                  style={{
-                    fontSize: '0.78rem',
-                    padding: '6px 4px',
-                    minHeight: '32px',
-                    gap: '5px',
-                    background: active ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
-                    borderColor: active ? 'var(--border-glow)' : 'transparent',
-                    color: active ? 'var(--text-main)' : 'var(--text-muted)',
-                    fontWeight: active ? 600 : 400,
-                  }}
-                >
-                  {tab.icon} {tab.label}
-                </button>
-              );
-            })}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Mode Selector Tabs (2-Row Layout: All tabs 100% visible on mobile with NO hidden scrolling) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {/* Row 1: Credentials & Security */}
+            <div style={{ display: 'grid', gridTemplateColumns: showWalletTab ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)', gap: '6px' }}>
+              {[
+                { id: 'password', label: 'Password', icon: <Sliders size={13} /> },
+                { id: 'passphrase', label: 'Passphrase', icon: <Type size={13} /> },
+                ...(showWalletTab ? [{ id: 'wallet', label: 'Cold Wallet', icon: <Wallet size={13} /> }] : []),
+              ].map((tab) => {
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as GeneratorTab)}
+                    className="btn"
+                    style={{
+                      fontSize: '0.78rem',
+                      padding: '8px 4px',
+                      minHeight: '35px',
+                      gap: '5px',
+                      background: active ? 'rgba(255, 255, 255, 0.16)' : 'rgba(255, 255, 255, 0.05)',
+                      borderColor: active ? 'var(--border-glow)' : 'transparent',
+                      color: active ? 'var(--text-main)' : 'var(--text-muted)',
+                      fontWeight: active ? 600 : 400,
+                    }}
+                  >
+                    {tab.icon} {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Row 2: Identities */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+              {[
+                { id: 'username', label: 'Username', icon: <User size={13} /> },
+                { id: 'email', label: 'Email Alias', icon: <AtSign size={13} /> },
+              ].map((tab) => {
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as GeneratorTab)}
+                    className="btn"
+                    style={{
+                      fontSize: '0.78rem',
+                      padding: '8px 4px',
+                      minHeight: '35px',
+                      gap: '5px',
+                      background: active ? 'rgba(255, 255, 255, 0.16)' : 'rgba(255, 255, 255, 0.05)',
+                      borderColor: active ? 'var(--border-glow)' : 'transparent',
+                      color: active ? 'var(--text-main)' : 'var(--text-muted)',
+                      fontWeight: active ? 600 : 400,
+                    }}
+                  >
+                    {tab.icon} {tab.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* ──────────────── TAB 1: RANDOM CHARACTERS ──────────────── */}
@@ -546,18 +595,19 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
               </div>
 
               <div style={{ paddingTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
                   <input
                     type="checkbox"
                     checked={avoidAmbiguous}
                     onChange={(e) => setAvoidAmbiguous(e.target.checked)}
+                    style={{ marginTop: '3px' }}
                   />
-                  <span>
-                    Avoid Ambiguous Characters{' '}
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
-                      (no I, l, 1, O, 0, |)
-                    </span>
-                  </span>
+                  <div>
+                    <div>Avoid Ambiguous Characters</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
+                      Excludes: I, l, 1, O, 0, |
+                    </div>
+                  </div>
                 </label>
               </div>
             </>
@@ -775,7 +825,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))',
                       gap: '6px',
                     }}
                   >
@@ -830,7 +880,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                   <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                    Public Receiving Address ({coldWallet.network})
+                    Public Receiving Address {coldWallet.network === 'Bitcoin' ? '(Native SegWit bc1q...)' : `(${coldWallet.network})`}
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     {coldWallet.explorerUrl && (
@@ -840,7 +890,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
                         rel="noreferrer"
                         className="btn btn-ghost"
                         style={{ padding: '2px 5px', minHeight: 'auto', textDecoration: 'none', color: 'inherit' }}
-                        title="View on Explorer"
+                        title="View on Explorer / Balance Checker"
                       >
                         <ExternalLink size={12} />
                       </a>
@@ -874,6 +924,102 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
                 >
                   {coldWallet.walletAddress}
                 </div>
+
+                {/* Bitcoin Legacy Address (Optional P2PKH 1...) */}
+                {coldWallet.legacyAddress && (
+                  <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed rgba(255, 255, 255, 0.1)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
+                        Legacy Address (P2PKH 1...)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!coldWallet.legacyAddress) return;
+                          navigator.clipboard.writeText(coldWallet.legacyAddress);
+                          setCopiedLegacy(true);
+                          setTimeout(() => setCopiedLegacy(false), 2000);
+                        }}
+                        className="btn btn-ghost"
+                        style={{ padding: '1px 5px', minHeight: 'auto', fontSize: '0.68rem', gap: '4px' }}
+                      >
+                        {copiedLegacy ? <Check size={11} color="var(--accent-emerald)" /> : <Copy size={11} />}
+                        <span>{copiedLegacy ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    </div>
+                    <div
+                      className="mono"
+                      style={{
+                        fontSize: '0.72rem',
+                        color: 'var(--text-dim)',
+                        wordBreak: 'break-all',
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        padding: '4px 6px',
+                        borderRadius: '4px',
+                        userSelect: 'all',
+                      }}
+                    >
+                      {coldWallet.legacyAddress}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Public Key (Secp256k1 Curve Point - Validates on Cryptools) */}
+              <div
+                style={{
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '10px 12px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                      Public Key ({coldWallet.network === 'Bitcoin' ? '33-byte Compressed' : 'Secp256k1'})
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '0.62rem',
+                        fontWeight: 600,
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                        background: 'rgba(56, 189, 248, 0.15)',
+                        color: '#38bdf8',
+                      }}
+                    >
+                      Cryptools Validated
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(coldWallet.publicKey);
+                      setCopiedPubKey(true);
+                      setTimeout(() => setCopiedPubKey(false), 2000);
+                    }}
+                    className="btn btn-ghost"
+                    style={{ padding: '2px 6px', minHeight: 'auto', fontSize: '0.72rem', gap: '4px' }}
+                  >
+                    {copiedPubKey ? <Check size={12} color="var(--accent-emerald)" /> : <Copy size={12} />}
+                    <span>{copiedPubKey ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+                <div
+                  className="mono"
+                  style={{
+                    fontSize: '0.72rem',
+                    color: '#93c5fd',
+                    wordBreak: 'break-all',
+                    background: 'rgba(0, 0, 0, 0.5)',
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    userSelect: 'all',
+                  }}
+                >
+                  {coldWallet.publicKey}
+                </div>
               </div>
 
               {/* Private Key */}
@@ -888,7 +1034,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                      Private Key
+                      Private Key {coldWallet.network === 'Bitcoin' ? '(WIF Compressed)' : ''}
                     </span>
                     <span className="mono" style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>
                       ({coldWallet.derivationPath})

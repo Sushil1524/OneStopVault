@@ -153,6 +153,8 @@ export function secp256k1ScalarMult(k: bigint, G: [bigint, bigint] = [Gx, Gy]): 
 
 // ─── Ethereum Address Generation & EIP-55 Checksum ───────────────────────────
 
+import { ripemd160 } from './ripemd160.js';
+
 export function toChecksumAddress(addressHex: string): string {
   const clean = addressHex.toLowerCase().replace(/^0x/, '');
   const enc = new TextEncoder();
@@ -171,7 +173,11 @@ export function toChecksumAddress(addressHex: string): string {
   return ret;
 }
 
-export function privateKeyToEthereumAddress(privateKeyBytes: Uint8Array): { address: string; privateKeyHex: string } {
+export function privateKeyToEthereumAddress(privateKeyBytes: Uint8Array): {
+  address: string;
+  privateKeyHex: string;
+  publicKeyHex: string;
+} {
   let k = 0n;
   for (let i = 0; i < privateKeyBytes.length; i++) {
     k = (k << 8n) | BigInt(privateKeyBytes[i]);
@@ -180,7 +186,7 @@ export function privateKeyToEthereumAddress(privateKeyBytes: Uint8Array): { addr
   const xHex = pub[0].toString(16).padStart(64, '0');
   const yHex = pub[1].toString(16).padStart(64, '0');
 
-  // Convert uncompressed public key (64 bytes) to byte array
+  // Uncompressed public key (64 bytes raw coordinates)
   const pubBytes = new Uint8Array(64);
   for (let i = 0; i < 32; i++) {
     pubBytes[i] = parseInt(xHex.slice(i * 2, (i + 1) * 2), 16);
@@ -201,6 +207,7 @@ export function privateKeyToEthereumAddress(privateKeyBytes: Uint8Array): { addr
   return {
     address: toChecksumAddress(addrRaw),
     privateKeyHex: '0x' + privHex,
+    publicKeyHex: '0x04' + xHex + yHex,
   };
 }
 
@@ -231,12 +238,96 @@ export function encodeBase58(source: Uint8Array): string {
   return str;
 }
 
+/**
+ * Standard Base58Check encoding used by Bitcoin (Addresses & WIF keys):
+ * Payload + 4-byte double SHA-256 checksum -> Base58 encoded.
+ */
+export async function encodeBase58Check(payload: Uint8Array): Promise<string> {
+  const hash1 = await crypto.subtle.digest('SHA-256', payload as unknown as BufferSource);
+  const hash2 = await crypto.subtle.digest('SHA-256', hash1);
+  const checksum = new Uint8Array(hash2).slice(0, 4);
+
+  const combined = new Uint8Array(payload.length + 4);
+  combined.set(payload);
+  combined.set(checksum, payload.length);
+
+  return encodeBase58(combined);
+}
+
+// ─── Bitcoin Key & Address Derivation (BIP-84 / BIP-141 / BIP-173) ─────────────
+
+export interface BitcoinKeysAndAddresses {
+  nativeSegwitAddress: string;  // bc1q... (P2WPKH Bech32)
+  legacyAddress: string;        // 1...    (P2PKH Base58Check)
+  wifPrivateKey: string;        // K... / L... (WIF compressed)
+  compressedPublicKeyHex: string; // 02... / 03... (33 bytes / 66 hex chars)
+  uncompressedPublicKeyHex: string; // 04... (65 bytes / 130 hex chars)
+}
+
+/**
+ * Derive full Bitcoin keys and addresses compliant with BIP-173, BIP-141, and Cryptools/Coinia:
+ * 1. Compressed Public Key (33 bytes: 0x02/0x03 + 32-byte X)
+ * 2. HASH160: RIPEMD-160(SHA-256(compressedPubKey))
+ * 3. Native SegWit (Bech32): bc1q...
+ * 4. Legacy Address: 1... (Base58Check 0x00 + HASH160)
+ * 5. WIF Private Key: K/L... (Base58Check 0x80 + privKey + 0x01)
+ */
+export async function deriveBitcoinKeysAndAddresses(privateKeyBytes: Uint8Array): Promise<BitcoinKeysAndAddresses> {
+  let k = 0n;
+  for (let i = 0; i < privateKeyBytes.length; i++) {
+    k = (k << 8n) | BigInt(privateKeyBytes[i]);
+  }
+  const pub = secp256k1ScalarMult(k);
+  const xHex = pub[0].toString(16).padStart(64, '0');
+  const yHex = pub[1].toString(16).padStart(64, '0');
+
+  // Compressed public key: 0x02 if y is even, 0x03 if y is odd
+  const prefixByte = (pub[1] % 2n === 0n) ? 0x02 : 0x03;
+  const compressedPubKey = new Uint8Array(33);
+  compressedPubKey[0] = prefixByte;
+  for (let i = 0; i < 32; i++) {
+    compressedPubKey[1 + i] = parseInt(xHex.slice(i * 2, (i + 1) * 2), 16);
+  }
+
+  let compPubHex = prefixByte.toString(16).padStart(2, '0') + xHex;
+  let uncompPubHex = '04' + xHex + yHex;
+
+  // HASH160 = RIPEMD160(SHA256(compressedPubKey))
+  const sha256Buffer = await crypto.subtle.digest('SHA-256', compressedPubKey as unknown as BufferSource);
+  const pubKeyHash = ripemd160(new Uint8Array(sha256Buffer));
+
+  // 1. Native SegWit (Bech32 bc1q...)
+  const nativeSegwitAddress = encodeBech32('bc', pubKeyHash);
+
+  // 2. Legacy Address (Base58Check 0x00 + pubKeyHash)
+  const legacyPayload = new Uint8Array(21);
+  legacyPayload[0] = 0x00; // Mainnet P2PKH prefix
+  legacyPayload.set(pubKeyHash, 1);
+  const legacyAddress = await encodeBase58Check(legacyPayload);
+
+  // 3. WIF Private Key (Base58Check 0x80 + privateKey + 0x01 for compressed)
+  const wifPayload = new Uint8Array(34);
+  wifPayload[0] = 0x80; // Mainnet private key prefix
+  wifPayload.set(privateKeyBytes, 1);
+  wifPayload[33] = 0x01; // Compressed public key flag
+  const wifPrivateKey = await encodeBase58Check(wifPayload);
+
+  return {
+    nativeSegwitAddress,
+    legacyAddress,
+    wifPrivateKey,
+    compressedPublicKeyHex: compPubHex,
+    uncompressedPublicKeyHex: uncompPubHex,
+  };
+}
+
 // ─── Bitcoin Native SegWit Bech32 (BIP-173) ───────────────────────────────────
 
 const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 
 function bech32Polymod(values: number[]): number {
-  const GEN = [0x3b2bbc8f, 0x15f2abc7, 0x677de83b, 0x30200801, 0x211b202e];
+  // Official BIP-173 generator polynomial constants
+  const GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
   let chk = 1;
   for (const v of values) {
     const top = chk >> 25;
