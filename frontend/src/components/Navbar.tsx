@@ -103,16 +103,37 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
                 )}
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{userEmail}</span>
-                <button onClick={onLock} className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                <button onClick={onLock} className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '0.8rem' }} title="Lock Vault Now (Ctrl+L)">
                   <Lock size={14} /> Lock
                 </button>
               </>
             )}
           </div>
 
-          {/* Mobile: sync status + hamburger */}
+          {/* Mobile: sync status + 1-tap lock + hamburger */}
           <div className="show-mobile-flex" style={{ alignItems: 'center', gap: '8px' }}>
             {userEmail && <SyncStatusBadge state={syncState} onManualSync={onManualSync} />}
+            {userEmail && (
+              <button
+                onClick={onLock}
+                style={{
+                  background: 'rgba(244, 63, 94, 0.14)',
+                  border: '1px solid rgba(244, 63, 94, 0.35)',
+                  borderRadius: '10px',
+                  width: '36px',
+                  height: '36px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--accent-rose)',
+                }}
+                title="Lock Vault Now"
+                aria-label="Lock Vault Now"
+              >
+                <Lock size={16} />
+              </button>
+            )}
             {userEmail && (
               <button
                 onClick={() => setMenuOpen(v => !v)}

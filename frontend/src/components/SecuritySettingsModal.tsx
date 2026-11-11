@@ -10,6 +10,8 @@ import {
   Trash2,
   ShieldAlert,
   Lock,
+  LogOut,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   hasQuickPin,
@@ -32,6 +34,8 @@ interface SecuritySettingsModalProps {
   onClose: () => void;
   session: UserSession;
   onUpdateSession?: (session: UserSession) => void;
+  onRevokeAllSessions?: () => Promise<void>;
+  onDeleteAccount?: (masterPassword: string) => Promise<void>;
 }
 
 export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
@@ -39,6 +43,8 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
   onClose,
   session,
   onUpdateSession,
+  onRevokeAllSessions,
+  onDeleteAccount,
 }) => {
   // PIN state
   const [pinEnabled, setPinEnabled] = useState<boolean>(false);
@@ -64,6 +70,18 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<boolean>(false);
 
+  // Session revocation ("Log Out All Devices") state
+  const [confirmRevoke, setConfirmRevoke] = useState<boolean>(false);
+  const [revokingSessions, setRevokingSessions] = useState<boolean>(false);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+
+  // Account deletion state
+  const [showDeleteForm, setShowDeleteForm] = useState<boolean>(false);
+  const [deletePassword, setDeletePassword] = useState<string>('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState<string>('');
+  const [deletingAccount, setDeletingAccount] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const isKeyExtractable = session.vaultKey.extractable;
 
   useEffect(() => {
@@ -74,6 +92,12 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
       setLockOnBlurState(getLockOnBlur());
       setBioError(null);
       setPinError(null);
+      setConfirmRevoke(false);
+      setRevokeError(null);
+      setShowDeleteForm(false);
+      setDeletePassword('');
+      setDeleteConfirmText('');
+      setDeleteError(null);
 
       isBiometricsAvailable().then(avail => {
         setBioSupported(avail);
@@ -184,6 +208,47 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
   const handleLockOnBlurChange = (val: boolean) => {
     setLockOnBlurState(val);
     setLockOnBlur(val);
+  };
+
+  // Handle Revoke All Sessions ("Log Out All Devices")
+  const handleRevokeAll = async () => {
+    if (!onRevokeAllSessions) return;
+    setRevokeError(null);
+    setRevokingSessions(true);
+    try {
+      await onRevokeAllSessions();
+      onClose();
+    } catch (err: any) {
+      setRevokeError(err.message || 'Failed to revoke sessions');
+    } finally {
+      setRevokingSessions(false);
+    }
+  };
+
+  // Handle Permanent Account Deletion
+  const handleDeleteAccountSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onDeleteAccount) return;
+    setDeleteError(null);
+
+    if (deleteConfirmText.trim().toUpperCase() !== 'DELETE') {
+      setDeleteError('Please type DELETE to confirm account deletion.');
+      return;
+    }
+    if (!deletePassword) {
+      setDeleteError('Please enter your Master Password.');
+      return;
+    }
+
+    setDeletingAccount(true);
+    try {
+      await onDeleteAccount(deletePassword);
+      onClose();
+    } catch (err: any) {
+      setDeleteError(err.message || 'Failed to delete account');
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   return (
@@ -547,6 +612,161 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
               <span>Lock immediately when tab loses focus or is minimized</span>
             </label>
           </div>
+
+          {/* ──────────────── Session Revocation ("Log Out All Devices") ──────────────── */}
+          {onRevokeAllSessions && (
+            <div
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-md)',
+                padding: '16px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <LogOut size={18} color="var(--accent-amber)" />
+                <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>Active Sessions</span>
+              </div>
+
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 12px', lineHeight: 1.4 }}>
+                Invalidate all active login tokens across every browser and mobile device. You will need to sign in again with your Master Password.
+              </p>
+
+              {!confirmRevoke ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmRevoke(true)}
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.8rem', padding: '8px 14px', gap: '6px' }}
+                >
+                  <LogOut size={14} /> Log Out All Devices
+                </button>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px', borderRadius: 'var(--radius-sm)', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--accent-amber)' }}>
+                    Are you sure? Every device (including this one) will be signed out immediately.
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={handleRevokeAll}
+                      disabled={revokingSessions}
+                      className="btn btn-danger"
+                      style={{ fontSize: '0.8rem', padding: '6px 12px', minHeight: '34px' }}
+                    >
+                      {revokingSessions ? 'Revoking...' : 'Confirm Log Out Everywhere'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setConfirmRevoke(false); setRevokeError(null); }}
+                      className="btn btn-ghost"
+                      style={{ fontSize: '0.8rem', padding: '6px 12px', minHeight: '34px' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {revokeError && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent-rose)', fontSize: '0.8rem', marginTop: '10px' }}>
+                  <AlertCircle size={14} /> {revokeError}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ──────────────── Danger Zone (Delete Account) ──────────────── */}
+          {onDeleteAccount && (
+            <div
+              style={{
+                background: 'rgba(244, 63, 94, 0.05)',
+                border: '1px solid rgba(244, 63, 94, 0.3)',
+                borderRadius: 'var(--radius-md)',
+                padding: '16px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: 'var(--accent-rose)' }}>
+                <AlertTriangle size={18} />
+                <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>Danger Zone: Delete Account</span>
+              </div>
+
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 12px', lineHeight: 1.4 }}>
+                Permanently delete your account and wipe all encrypted vault items from the cloud database. This action cannot be undone.
+              </p>
+
+              {!showDeleteForm ? (
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteForm(true)}
+                  className="btn btn-danger"
+                  style={{ fontSize: '0.8rem', padding: '8px 14px', gap: '6px' }}
+                >
+                  <Trash2 size={14} /> Delete Account
+                </button>
+              ) : (
+                <form onSubmit={handleDeleteAccountSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div>
+                    <label className="input-label" style={{ fontSize: '0.78rem' }}>
+                      Enter Master Password to verify
+                    </label>
+                    <input
+                      type="password"
+                      className="input-field"
+                      placeholder="Master Password"
+                      value={deletePassword}
+                      onChange={e => setDeletePassword(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="input-label" style={{ fontSize: '0.78rem' }}>
+                      Type <strong>DELETE</strong> to confirm permanent deletion
+                    </label>
+                    <input
+                      type="text"
+                      className="input-field mono"
+                      placeholder="DELETE"
+                      value={deleteConfirmText}
+                      onChange={e => setDeleteConfirmText(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  {deleteError && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent-rose)', fontSize: '0.8rem' }}>
+                      <AlertCircle size={14} /> {deleteError}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    <button
+                      type="submit"
+                      disabled={deletingAccount}
+                      className="btn btn-danger"
+                      style={{ flex: 1, fontSize: '0.82rem', padding: '8px 12px', minHeight: '36px' }}
+                    >
+                      {deletingAccount ? 'Deleting Account...' : 'Permanently Delete Account'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDeleteForm(false);
+                        setDeleteError(null);
+                        setDeletePassword('');
+                        setDeleteConfirmText('');
+                      }}
+                      className="btn btn-ghost"
+                      style={{ fontSize: '0.82rem', padding: '8px 14px', minHeight: '36px' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

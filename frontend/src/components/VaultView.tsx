@@ -313,10 +313,11 @@ export const VaultView: React.FC<VaultViewProps> = ({
               }}
             />
             <input
+              id="vault-search-desktop"
               type="text"
               className="input-field"
               style={{ paddingLeft: '36px' }}
-              placeholder={isTrashView ? 'Search trash items…' : 'Search passwords, API keys, notes, tags…'}
+              placeholder={isTrashView ? 'Search trash items…' : 'Search passwords, wallets, notes, tags… (Ctrl+K)'}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />

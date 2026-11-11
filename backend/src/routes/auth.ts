@@ -1,135 +1,208 @@
 /**
  * routes/auth.ts
- * Handles user registration, login, and salt retrieval.
- *
- * Why do we use a salt?
- *   Each user gets a unique random salt when they register.
- *   The client mixes the salt with the master password using PBKDF2 (600k rounds)
- *   to derive two keys:
- *     - vaultKey   → used locally to encrypt/decrypt passwords (AES-256-GCM)
- *     - authKeyHash → sent here to prove identity (we never see the real password)
+ * Handles registration, login, anti-enumeration salt lookup,
+ * session revocation ("Log Out All Devices"), and permanent account deletion.
  */
 
-import { Hono } from 'hono';
+import { Hono, Context } from 'hono';
 import { Env } from '../types.js';
-import { getUserByEmail, createUser } from '../db/queries.js';
+import {
+  getUserByEmail,
+  createUser,
+  incrementTokenVersion,
+  deleteUserAccount,
+  checkRateLimit,
+} from '../db/queries.js';
+import {
+  getJwtSecret,
+  createToken,
+  authenticateRequest,
+  constantTimeEqual,
+  deriveDeterministicFakeSalt,
+  getClientIp,
+} from '../crypto/security.js';
 
 const authApp = new Hono<{ Bindings: Env }>();
 
-// ── JWT helpers ──────────────────────────────────────────────
-const b64url = (str: string) =>
-  btoa(str).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const b64urlDecode = (str: string) => {
-  let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
-  while (b64.length % 4) b64 += '=';
-  return atob(b64);
-};
-
-/** Create a signed JWT token that expires in 7 days. */
-async function createToken(userId: string, secret: string): Promise<string> {
-  const header  = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const payload = b64url(JSON.stringify({
-    sub: userId,
-    exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
-  }));
-  const data = `${header}.${payload}`;
-
-  const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+async function enforceRateLimit(
+  c: Context<{ Bindings: Env }>,
+  bucket: string,
+  maxRequests: number,
+  windowMs: number,
+): Promise<Response | null> {
+  const ip = getClientIp(c);
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    c.env.DB,
+    `${bucket}:${ip}`,
+    maxRequests,
+    windowMs,
   );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
-  return `${data}.${b64url(String.fromCharCode(...new Uint8Array(sig)))}`;
-}
-
-/**
- * Verify a JWT and return the userId (sub claim) if valid, or null if invalid/expired.
- * Used by vault routes to authenticate incoming requests.
- */
-export async function verifyToken(token: string, secret: string): Promise<string | null> {
-  try {
-    const [header, payload, signature] = token.split('.');
-    if (!header || !payload || !signature) return null;
-
-    const key = await crypto.subtle.importKey(
-      'raw', new TextEncoder().encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'],
+  if (!allowed) {
+    c.header('Retry-After', String(retryAfterSec));
+    return c.json(
+      { error: `Too many requests. Please try again in ${retryAfterSec} seconds.` },
+      429,
     );
-
-    // Check the signature matches header + payload
-    const sigBytes = Uint8Array.from(b64urlDecode(signature), c => c.charCodeAt(0));
-    const valid = await crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(`${header}.${payload}`));
-    if (!valid) return null;
-
-    // Check the token hasn't expired
-    const claims = JSON.parse(b64urlDecode(payload));
-    if (claims.exp < Math.floor(Date.now() / 1000)) return null;
-
-    return claims.sub as string;
-  } catch {
-    return null;
   }
+  return null;
 }
 
-// ── Routes ───────────────────────────────────────────────────
+// ── Public Auth Routes ───────────────────────────────────────
 
 /**
  * POST /api/auth/register
- * Body: { email, authHash, salt }
- * Creates a new user. authHash is a SHA-256 hash derived from the user's
- * master password — we never receive or store the real password.
+ * Rate limit: 8 registrations per hour per IP
  */
 authApp.post('/register', async (c) => {
-  const { email, authHash, salt } = await c.req.json();
+  const limited = await enforceRateLimit(c, 'auth:register', 8, 60 * 60 * 1000);
+  if (limited) return limited;
 
-  if (!email || !authHash || !salt) {
-    return c.json({ error: 'email, authHash, and salt are required' }, 400);
+  const { email, authHash, salt } = await c.req.json();
+  const normalEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+
+  if (!normalEmail || !EMAIL_REGEX.test(normalEmail)) {
+    return c.json({ error: 'Valid email address is required' }, 400);
+  }
+  if (!authHash || typeof authHash !== 'string' || authHash.length < 32) {
+    return c.json({ error: 'Valid authHash is required' }, 400);
+  }
+  if (!salt || typeof salt !== 'string' || salt.length < 16) {
+    return c.json({ error: 'Valid cryptographic salt is required' }, 400);
   }
 
-  if (await getUserByEmail(c.env.DB, email)) {
+  if (await getUserByEmail(c.env.DB, normalEmail)) {
     return c.json({ error: 'An account with this email already exists' }, 409);
   }
 
-  const user = await createUser(c.env.DB, crypto.randomUUID(), email, authHash, salt);
-  const token = await createToken(user.id, c.env.JWT_SECRET ?? 'change-me-in-production');
+  const user = await createUser(c.env.DB, crypto.randomUUID(), normalEmail, authHash, salt);
+  const token = await createToken(user.id, user.token_version ?? 1, getJwtSecret(c.env));
 
-  return c.json({ token, user: { id: user.id, email: user.email, salt: user.salt } });
+  return c.json({
+    token,
+    user: { id: user.id, email: user.email, salt: user.salt },
+  });
 });
 
 /**
  * POST /api/auth/login
- * Body: { email, authHash }
- * Verifies the authHash against what was stored at registration.
- * The client derives authHash locally using PBKDF2 + the user's master password.
+ * Constant-time authHash verification + rate limiting (10 attempts / 15 mins per IP+email)
  */
 authApp.post('/login', async (c) => {
-  const { email, authHash } = await c.req.json();
-  if (!email || !authHash) return c.json({ error: 'email and authHash are required' }, 400);
+  const ipLimited = await enforceRateLimit(c, 'auth:login', 15, 15 * 60 * 1000);
+  if (ipLimited) return ipLimited;
 
-  const user = await getUserByEmail(c.env.DB, email);
-  if (!user || user.auth_hash !== authHash) {
-    // Return the same error for both "not found" and "wrong password" to avoid leaking info
+  const { email, authHash } = await c.req.json();
+  const normalEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+
+  if (!normalEmail || !authHash || typeof authHash !== 'string') {
+    return c.json({ error: 'email and authHash are required' }, 400);
+  }
+
+  const acctLimited = await enforceRateLimit(
+    c,
+    `auth:login_acct:${normalEmail}`,
+    10,
+    15 * 60 * 1000,
+  );
+  if (acctLimited) return acctLimited;
+
+  const user = await getUserByEmail(c.env.DB, normalEmail);
+  const isValid = user ? await constantTimeEqual(user.auth_hash, authHash) : false;
+
+  if (!user || !isValid) {
     return c.json({ error: 'Invalid email or password' }, 401);
   }
 
-  const token = await createToken(user.id, c.env.JWT_SECRET ?? 'change-me-in-production');
-  return c.json({ token, user: { id: user.id, email: user.email, salt: user.salt } });
+  const token = await createToken(user.id, user.token_version ?? 1, getJwtSecret(c.env));
+  return c.json({
+    token,
+    user: { id: user.id, email: user.email, salt: user.salt },
+  });
 });
 
 /**
  * GET /api/auth/salt?email=you@example.com
- * Returns the user's salt so the client can derive their authHash locally before logging in.
- * The salt is not sensitive — it is only useful combined with the master password.
+ * Anti-enumeration: always returns 200 with a valid 32-char hex salt.
+ * For unregistered emails, returns a deterministic HMAC-derived dummy salt
+ * so attackers cannot probe which email addresses exist.
  */
 authApp.get('/salt', async (c) => {
+  const limited = await enforceRateLimit(c, 'auth:salt', 30, 15 * 60 * 1000);
+  if (limited) return limited;
+
   const email = c.req.query('email');
-  if (!email) return c.json({ error: 'email query param is required' }, 400);
+  if (!email || !email.trim()) {
+    return c.json({ error: 'email query param is required' }, 400);
+  }
 
-  const user = await getUserByEmail(c.env.DB, email);
-  if (!user) return c.json({ error: 'User not found' }, 404);
+  const normalEmail = email.trim().toLowerCase();
+  const user = await getUserByEmail(c.env.DB, normalEmail);
 
-  return c.json({ salt: user.salt });
+  const salt = user
+    ? user.salt
+    : await deriveDeterministicFakeSalt(normalEmail, c.env);
+
+  return c.json({ salt });
+});
+
+// ── Protected Session & Account Management Routes ────────────
+
+/**
+ * POST /api/auth/revoke-sessions
+ * "Log Out All Devices": increments token_version so every existing JWT
+ * across all browsers and mobile devices becomes immediately invalid.
+ */
+authApp.post('/revoke-sessions', async (c) => {
+  const limited = await enforceRateLimit(c, 'auth:revoke', 10, 15 * 60 * 1000);
+  if (limited) return limited;
+
+  const auth = await authenticateRequest(c);
+  if (!auth.ok) return auth.response;
+
+  const newVersion = await incrementTokenVersion(c.env.DB, auth.user.id);
+
+  return c.json({
+    success: true,
+    tokenVersion: newVersion,
+    message: 'All active sessions across all devices have been revoked.',
+  });
+});
+
+/**
+ * DELETE /api/auth/account
+ * Permanently deletes the user's account, vault items, and metadata.
+ * Requires re-verifying authHash in constant time before destructive delete.
+ */
+authApp.delete('/account', async (c) => {
+  const limited = await enforceRateLimit(c, 'auth:delete', 5, 15 * 60 * 1000);
+  if (limited) return limited;
+
+  const auth = await authenticateRequest(c);
+  if (!auth.ok) return auth.response;
+
+  const body = await c.req.json().catch(() => ({}));
+  const authHash = typeof body?.authHash === 'string' ? body.authHash : '';
+
+  if (!authHash) {
+    return c.json({ error: 'Master password verification (authHash) is required' }, 400);
+  }
+
+  const verified = await constantTimeEqual(auth.user.auth_hash, authHash);
+  if (!verified) {
+    return c.json({ error: 'Incorrect Master Password' }, 401);
+  }
+
+  const deleted = await deleteUserAccount(c.env.DB, auth.user.id);
+  if (!deleted) {
+    return c.json({ error: 'Failed to delete account' }, 500);
+  }
+
+  return c.json({
+    success: true,
+    message: 'Account and all encrypted vault data have been permanently deleted.',
+  });
 });
 
 export { authApp };

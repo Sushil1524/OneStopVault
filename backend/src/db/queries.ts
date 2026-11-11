@@ -6,13 +6,62 @@
 
 import { UserRow, VaultItemRow, VaultMetadataRow } from '../types.js';
 
+let schemaChecked = false;
+let schemaPromise: Promise<void> | null = null;
+
+/**
+ * Ensures backward-compatible security schema upgrades exist in live D1 databases:
+ * - Adds `token_version` column to `users` if running against an older DB
+ * - Ensures `rate_limits` table exists
+ * Runs at most once per Worker isolate.
+ */
+export async function ensureSecuritySchema(db: D1Database): Promise<void> {
+  if (schemaChecked) return;
+  if (schemaPromise) return schemaPromise;
+
+  schemaPromise = (async () => {
+    try {
+      const { results } = await db.prepare('PRAGMA table_info(users)').all<{ name: string }>();
+      const hasTokenVersion = (results ?? []).some(col => col.name === 'token_version');
+      if (!hasTokenVersion) {
+        await db.prepare('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1').run();
+      }
+
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS rate_limits (
+          key TEXT PRIMARY KEY,
+          count INTEGER NOT NULL,
+          reset_at INTEGER NOT NULL
+        )
+      `).run();
+
+      schemaChecked = true;
+    } catch (err) {
+      // Reset promise on transient error so next request can retry
+      schemaPromise = null;
+      throw err;
+    }
+  })();
+
+  return schemaPromise;
+}
+
 // ── User helpers ────────────────────────────────────────────
 
 /** Look up a user by email address. Returns null if not found. */
 export async function getUserByEmail(db: D1Database, email: string): Promise<UserRow | null> {
-  return db.prepare('SELECT * FROM users WHERE email = ?')
+  await ensureSecuritySchema(db);
+  return (await db.prepare('SELECT * FROM users WHERE email = ?')
     .bind(email.toLowerCase().trim())
-    .first<UserRow>() ?? null;
+    .first<UserRow>()) ?? null;
+}
+
+/** Look up a user by ID. Returns null if not found. */
+export async function getUserById(db: D1Database, id: string): Promise<UserRow | null> {
+  await ensureSecuritySchema(db);
+  return (await db.prepare('SELECT * FROM users WHERE id = ?')
+    .bind(id)
+    .first<UserRow>()) ?? null;
 }
 
 /** Create a new user row and initialise their empty vault metadata. */
@@ -23,19 +72,88 @@ export async function createUser(
   authHash: string,
   salt: string,
 ): Promise<UserRow> {
+  await ensureSecuritySchema(db);
   const now = Date.now();
   const normalEmail = email.toLowerCase().trim();
 
-  await db.prepare('INSERT INTO users (id, email, auth_hash, salt, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(id, normalEmail, authHash, salt, now)
+  await db.batch([
+    db.prepare('INSERT INTO users (id, email, auth_hash, salt, token_version, created_at) VALUES (?, ?, ?, ?, 1, ?)')
+      .bind(id, normalEmail, authHash, salt, now),
+    db.prepare('INSERT INTO vault_metadata (user_id, version, checksum, updated_at) VALUES (?, 1, ?, ?)')
+      .bind(id, '', now),
+  ]);
+
+  return { id, email: normalEmail, auth_hash: authHash, salt, token_version: 1, created_at: now };
+}
+
+/** Increment token_version to immediately invalidate all existing JWT sessions for a user. */
+export async function incrementTokenVersion(db: D1Database, userId: string): Promise<number> {
+  await ensureSecuritySchema(db);
+  await db.prepare('UPDATE users SET token_version = COALESCE(token_version, 1) + 1 WHERE id = ?')
+    .bind(userId)
     .run();
 
-  // Every user starts with an empty vault_metadata row
-  await db.prepare('INSERT INTO vault_metadata (user_id, version, checksum, updated_at) VALUES (?, 1, ?, ?)')
-    .bind(id, '', now)
+  const row = await db.prepare('SELECT token_version FROM users WHERE id = ?')
+    .bind(userId)
+    .first<{ token_version: number }>();
+
+  return row?.token_version ?? 1;
+}
+
+/** Permanently delete a user account, all encrypted vault items, and metadata. */
+export async function deleteUserAccount(db: D1Database, userId: string): Promise<boolean> {
+  await ensureSecuritySchema(db);
+  const results = await db.batch([
+    db.prepare('DELETE FROM vault_items WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM vault_metadata WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM users WHERE id = ?').bind(userId),
+  ]);
+
+  const userDelete = results[2];
+  return Boolean(userDelete?.success);
+}
+
+// ── Rate Limiting helpers ───────────────────────────────────
+
+/**
+ * Sliding/fixed window rate limiter backed by D1.
+ * Prevents brute-force credential stuffing and salt/account probing across Worker isolates.
+ */
+export async function checkRateLimit(
+  db: D1Database,
+  key: string,
+  maxRequests: number,
+  windowMs: number,
+): Promise<{ allowed: boolean; retryAfterSec: number }> {
+  await ensureSecuritySchema(db);
+  const now = Date.now();
+
+  const existing = await db.prepare('SELECT count, reset_at FROM rate_limits WHERE key = ?')
+    .bind(key)
+    .first<{ count: number; reset_at: number }>();
+
+  if (!existing || existing.reset_at <= now) {
+    const resetAt = now + windowMs;
+    await db.prepare(`
+      INSERT INTO rate_limits (key, count, reset_at)
+      VALUES (?, 1, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        count = 1,
+        reset_at = excluded.reset_at
+    `).bind(key, resetAt).run();
+    return { allowed: true, retryAfterSec: 0 };
+  }
+
+  if (existing.count >= maxRequests) {
+    const retryAfterSec = Math.max(1, Math.ceil((existing.reset_at - now) / 1000));
+    return { allowed: false, retryAfterSec };
+  }
+
+  await db.prepare('UPDATE rate_limits SET count = count + 1 WHERE key = ?')
+    .bind(key)
     .run();
 
-  return { id, email: normalEmail, auth_hash: authHash, salt, created_at: now };
+  return { allowed: true, retryAfterSec: 0 };
 }
 
 // ── Vault item helpers ───────────────────────────────────────
@@ -114,14 +232,6 @@ export async function getVaultMetadata(db: D1Database, userId: string): Promise<
 
 /**
  * Recompute the SHA-256 vault checksum from all current items and store it.
- *
- * How checksums work:
- *   1. Collect a short "signature" string for every vault item: "<id>:<updatedAt>:<first32charsOfCiphertext>"
- *   2. Sort those strings so order doesn't matter.
- *   3. Hash the joined result with SHA-256.
- *   4. Save the hex hash in vault_metadata and bump the version counter.
- *
- * The frontend does the same calculation locally — if both match, the vault is in sync.
  */
 export async function refreshChecksum(db: D1Database, userId: string): Promise<string> {
   const items = await getVaultItems(db, userId);

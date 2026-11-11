@@ -10,6 +10,7 @@ export interface UserRow {
   email: string;
   auth_hash: string;
   salt: string;
+  token_version?: number;
   created_at: number;
 }
 

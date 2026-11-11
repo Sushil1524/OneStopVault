@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT UNIQUE NOT NULL,
   auth_hash TEXT NOT NULL,
   salt TEXT NOT NULL,
+  token_version INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL
 );
 
@@ -25,6 +26,12 @@ CREATE TABLE IF NOT EXISTS vault_metadata (
   checksum TEXT NOT NULL DEFAULT '',
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL,
+  reset_at INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_vault_items_user ON vault_items(user_id);

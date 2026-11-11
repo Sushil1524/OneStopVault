@@ -12,15 +12,18 @@ import { SecuritySettingsModal } from './components/SecuritySettingsModal.js';
 
 import { UserSession, VaultItem, SyncState, ItemType, DecryptedPayload } from './types/vault.js';
 import { UnifiedStorage } from './storage/unifiedStorage.js';
-import { WorkerClient } from './api/workerClient.js';
+import { WorkerClient, AuthRevokedError } from './api/workerClient.js';
 import { encryptVaultItem, decryptVaultItem } from './crypto/aesGcm.js';
 import { calculateVaultChecksum } from './crypto/checksum.js';
+import { deriveMasterKeys } from './crypto/keyDerivation.js';
 import { ImportResultItem } from './crypto/importers/importer.js';
 import { ColdWalletResult } from './crypto/coldWalletGenerator.js';
 import {
   isQuickUnlockConfigured,
   hasQuickPin,
   hasBiometrics,
+  removeQuickPin,
+  removeBiometrics,
   saveLockedSessionMeta,
   getLockedSessionMeta,
   clearLockedSessionMeta,
@@ -33,6 +36,7 @@ export const App: React.FC = () => {
   const [items, setItems] = useState<VaultItem[]>([]);
   const [syncState, setSyncState] = useState<SyncState>('IN_SYNC');
   const [isLocked, setIsLocked] = useState<boolean>(() => isQuickUnlockConfigured());
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
 
   // Modal Visibility States
   const [isItemModalOpen, setIsItemModalOpen] = useState<boolean>(false);
@@ -68,6 +72,16 @@ export const App: React.FC = () => {
     []
   );
 
+  // Full logout (switches to master password login and clears locked session)
+  const handleFullLogout = useCallback((notice?: string) => {
+    setSession(null);
+    setItems([]);
+    UnifiedStorage.clearSession();
+    clearLockedSessionMeta();
+    setIsLocked(false);
+    setSessionNotice(notice ?? null);
+  }, []);
+
   // Synchronize local vault with Cloudflare D1 worker
   const performSync = useCallback(
     async (currentSession: UserSession, localItems: VaultItem[]) => {
@@ -81,6 +95,12 @@ export const App: React.FC = () => {
         try {
           serverStatus = await WorkerClient.getVaultStatus(currentSession.token);
         } catch (e) {
+          if (e instanceof AuthRevokedError) {
+            removeQuickPin();
+            removeBiometrics();
+            handleFullLogout(e.message);
+            return;
+          }
           console.warn('Worker server offline or unreachable', e);
           setSyncState('OFFLINE');
           return;
@@ -117,15 +137,22 @@ export const App: React.FC = () => {
 
         setSyncState('IN_SYNC');
       } catch (err) {
+        if (err instanceof AuthRevokedError) {
+          removeQuickPin();
+          removeBiometrics();
+          handleFullLogout(err.message);
+          return;
+        }
         console.error('Sync failed', err);
         setSyncState('ERROR');
       }
     },
-    [decryptAllItems]
+    [decryptAllItems, handleFullLogout]
   );
 
   // Initialize vault on full master password authentication
   const handleAuthenticated = async (newSession: UserSession) => {
+    setSessionNotice(null);
     setSession(newSession);
     saveLockedSessionMeta(newSession);
     UnifiedStorage.saveSession(newSession.user, newSession.token);
@@ -151,26 +178,32 @@ export const App: React.FC = () => {
       setIsLocked(true);
     } else {
       // Full logout if Quick Unlock is not configured
-      setSession(null);
-      setItems([]);
-      UnifiedStorage.clearSession();
-      clearLockedSessionMeta();
-      setIsLocked(false);
+      handleFullLogout();
     }
-  }, [session]);
+  }, [session, handleFullLogout]);
 
   // Switch to Master Password screen without destroying locked session
   const handleSwitchToPassword = () => {
     setIsLocked(false);
   };
 
-  // Full logout (switches to master password login and clears locked session)
-  const handleFullLogout = () => {
-    setSession(null);
-    setItems([]);
-    UnifiedStorage.clearSession();
-    clearLockedSessionMeta();
-    setIsLocked(false);
+  // Revoke all sessions across all devices ("Log Out All Devices")
+  const handleRevokeAllSessions = async () => {
+    if (!session) return;
+    await WorkerClient.revokeAllSessions(session.token);
+    removeQuickPin();
+    removeBiometrics();
+    handleFullLogout('All active sessions across your devices have been logged out.');
+  };
+
+  // Permanently delete account & encrypted cloud vault
+  const handleDeleteAccount = async (masterPassword: string) => {
+    if (!session) return;
+    const { authKeyHash } = await deriveMasterKeys(masterPassword, session.user.salt);
+    await WorkerClient.deleteAccount(session.token, authKeyHash);
+    removeQuickPin();
+    removeBiometrics();
+    handleFullLogout('Your account and encrypted cloud vault have been permanently deleted.');
   };
 
   // Quick Unlock success handler (restores vaultKey into RAM)
@@ -297,6 +330,12 @@ export const App: React.FC = () => {
       });
       setSyncState('IN_SYNC');
     } catch (e) {
+      if (e instanceof AuthRevokedError) {
+        removeQuickPin();
+        removeBiometrics();
+        handleFullLogout(e.message);
+        return;
+      }
       console.warn('Saved locally, background cloud sync pending...', e);
       setSyncState('OFFLINE');
     }
@@ -363,6 +402,12 @@ export const App: React.FC = () => {
       await WorkerClient.deleteVaultItem(session.token, id);
       setSyncState('IN_SYNC');
     } catch (e) {
+      if (e instanceof AuthRevokedError) {
+        removeQuickPin();
+        removeBiometrics();
+        handleFullLogout(e.message);
+        return;
+      }
       console.warn('Deleted locally, background sync pending...', e);
       setSyncState('OFFLINE');
     }
@@ -413,13 +458,17 @@ export const App: React.FC = () => {
       setSyncState('SYNCING');
       await Promise.all(
         trashItems.map(item =>
-          WorkerClient.deleteVaultItem(session.token, item.id).catch(e =>
-            console.warn('Failed to delete item from cloud', item.id, e)
-          )
+          WorkerClient.deleteVaultItem(session.token, item.id)
         )
       );
       setSyncState('IN_SYNC');
     } catch (e) {
+      if (e instanceof AuthRevokedError) {
+        removeQuickPin();
+        removeBiometrics();
+        handleFullLogout(e.message);
+        return;
+      }
       console.warn('Batch trash empty error', e);
       setSyncState('OFFLINE');
     }
@@ -467,6 +516,48 @@ export const App: React.FC = () => {
     setIsItemModalOpen(true);
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isTypingTarget =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
+        Boolean(target?.isContentEditable);
+
+      const isMod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+
+      if (e.key === 'Escape') {
+        setIsItemModalOpen(false);
+        setIsGeneratorOpen(false);
+        setIsBreachAuditOpen(false);
+        setIsImportModalOpen(false);
+        setIsExportModalOpen(false);
+        setIsSecurityModalOpen(false);
+        return;
+      }
+
+      if (!session || isLocked) return;
+
+      if (isMod && key === 'l') {
+        e.preventDefault();
+        handleLock();
+        return;
+      }
+
+      if ((isMod && key === 'k') || (e.key === '/' && !isTypingTarget)) {
+        e.preventDefault();
+        const searchInput = document.getElementById('vault-search-desktop') as HTMLInputElement | null;
+        searchInput?.focus();
+        searchInput?.select();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [session, isLocked, handleLock]);
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Navbar
@@ -485,7 +576,7 @@ export const App: React.FC = () => {
         <QuickUnlockScreen
           onUnlocked={handleQuickUnlocked}
           onSwitchToPassword={handleSwitchToPassword}
-          onFullLogout={handleFullLogout}
+          onFullLogout={() => handleFullLogout()}
         />
       ) : !session ? (
         <AuthScreen
@@ -494,6 +585,7 @@ export const App: React.FC = () => {
           onQuickUnlock={
             (hasQuickPin() || hasBiometrics()) ? () => setIsLocked(true) : undefined
           }
+          sessionNotice={sessionNotice}
         />
       ) : (
         <VaultView
@@ -558,6 +650,8 @@ export const App: React.FC = () => {
           onClose={() => setIsSecurityModalOpen(false)}
           session={session}
           onUpdateSession={(updatedSession) => setSession(updatedSession)}
+          onRevokeAllSessions={handleRevokeAllSessions}
+          onDeleteAccount={handleDeleteAccount}
         />
       )}
     </div>

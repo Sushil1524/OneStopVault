@@ -9,9 +9,10 @@ interface AuthScreenProps {
   onAuthenticated: (session: UserSession) => void;
   onOpenGenerator: () => void;
   onQuickUnlock?: () => void;
+  sessionNotice?: string | null;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onOpenGenerator, onQuickUnlock }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onOpenGenerator, onQuickUnlock, sessionNotice }) => {
   const [isRegister, setIsRegister] = useState<boolean>(false);
   const [email, setEmail] = useState<string>(() => {
     const meta = getLockedSessionMeta();
@@ -190,6 +191,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onOpenG
               : 'Enter your Master Password to decrypt locally.'}
           </p>
         </div>
+
+        {sessionNotice && !error && (
+          <div
+            style={{
+              padding: '12px 14px',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(245, 158, 11, 0.14)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              color: '#fbbf24',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '20px',
+            }}
+          >
+            <AlertCircle size={16} style={{ flexShrink: 0 }} />
+            <span>{sessionNotice}</span>
+          </div>
+        )}
 
         {error && (
           <div

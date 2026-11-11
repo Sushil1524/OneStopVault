@@ -9,27 +9,20 @@
 
 import { Hono } from 'hono';
 import { Env } from '../types.js';
-import { verifyToken } from './auth.js';
+import { authenticateRequest } from '../crypto/security.js';
 import { getVaultItems, getVaultMetadata, upsertVaultItem, deleteVaultItem } from '../db/queries.js';
 import { applyServerPepper, verifyAndStripPepper } from '../crypto/pepper.js';
 
 const vaultApp = new Hono<{ Bindings: Env; Variables: { userId: string } }>();
 
-// Auth Middleware
+// Auth Middleware (verifies JWT signature, expiry, user existence, and token_version)
 vaultApp.use('*', async (c, next) => {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return c.json({ error: 'Authorization header required' }, 401);
+  const auth = await authenticateRequest(c);
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  const token = authHeader.substring(7);
-  const userId = await verifyToken(token, c.env.JWT_SECRET || 'default-secret-key-change-in-prod');
-
-  if (!userId) {
-    return c.json({ error: 'Invalid or expired session token' }, 401);
-  }
-
-  c.set('userId', userId);
+  c.set('userId', auth.user.id);
   await next();
 });
 
