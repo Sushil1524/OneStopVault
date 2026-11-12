@@ -98,11 +98,37 @@ export async function deriveBip32ChildKey(seed: Uint8Array, path: string): Promi
 }
 
 /**
- * Standard SLIP-0010 Ed25519 seed derivation used by Solana wallets (Phantom, Solflare).
+ * Standard SLIP-0010 Ed25519 hardened key derivation used by Solana wallets (Phantom, Solflare).
+ * Walks every hardened segment in `path` (default: m/44'/501'/0'/0').
  */
-export async function deriveSolanaKey(seed: Uint8Array): Promise<Uint8Array> {
+export async function deriveSolanaKey(
+  seed: Uint8Array,
+  path: string = "m/44'/501'/0'/0'",
+): Promise<Uint8Array> {
   const enc = new TextEncoder();
   const masterI = await hmacSha512(enc.encode('ed25519 seed'), seed);
-  return masterI.slice(0, 32);
+  let key = masterI.slice(0, 32);
+  let chainCode = masterI.slice(32, 64);
+
+  const segments = path.replace(/^m\/?/, '').split('/').filter(Boolean);
+  for (const seg of segments) {
+    if (!seg.endsWith("'")) {
+      throw new Error(`SLIP-0010 Ed25519 only supports hardened derivation paths (got "${seg}")`);
+    }
+    const index = (parseInt(seg.slice(0, -1), 10) + 0x80000000) >>> 0;
+    const data = new Uint8Array(1 + 32 + 4);
+    data[0] = 0x00;
+    data.set(key, 1);
+    data[33] = (index >>> 24) & 0xff;
+    data[34] = (index >>> 16) & 0xff;
+    data[35] = (index >>> 8) & 0xff;
+    data[36] = index & 0xff;
+
+    const I = await hmacSha512(chainCode, data);
+    key = I.slice(0, 32);
+    chainCode = I.slice(32, 64);
+  }
+
+  return key;
 }
 

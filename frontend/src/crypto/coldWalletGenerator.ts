@@ -5,6 +5,7 @@ import {
   encodeBase58,
 } from './secp256k1.js';
 import { deriveBip32ChildKey, deriveSolanaKey } from './bip32.js';
+import { ed25519PublicKeyFromSeed } from './ed25519.js';
 
 export type CryptoNetworkId = 'Ethereum' | 'Bitcoin' | 'Solana' | 'Polygon' | 'BNB Chain' | 'Multi-Chain';
 
@@ -26,6 +27,7 @@ export interface ColdWalletResult {
   publicKey: string;              // Standard public key hex (compressed 02/03 for BTC, 0x04 for EVM)
   privateKey: string;             // Private key (WIF for Bitcoin, 0x hex for EVM, Base58 for Solana)
   entropyBits: number;
+  hasPassphrase: boolean;
   explorerUrl?: string;
   createdAt: number;
 }
@@ -104,16 +106,19 @@ export async function generateColdWallet(options: ColdWalletOptions = {}): Promi
     privateKey = btcKeys.wifPrivateKey;
     explorerUrl = `https://mempool.space/address/${walletAddress}`;
   } else if (network === 'Solana') {
-    // Solana SLIP-0010 Ed25519 seed & Base58 public address:
-    // Matches Phantom / Solflare recovery phrase restoration
-    const solKeyBytes = await deriveSolanaKey(seed);
+    // Solana SLIP-0010 Ed25519 keypair (m/44'/501'/0'/0') & Base58 public address:
+    // Matches Phantom / Solflare recovery phrase restoration identically
+    const solSeed32 = await deriveSolanaKey(seed, derivationPath);
+    const pubBytes = await ed25519PublicKeyFromSeed(solSeed32);
 
-    const pubSeedBuffer = await crypto.subtle.digest('SHA-256', solKeyBytes as unknown as BufferSource);
-    const pubBytes = new Uint8Array(pubSeedBuffer);
+    // Phantom/Solflare export private key format is 64-byte [seed32 || pubkey32] in Base58
+    const keypair64 = new Uint8Array(64);
+    keypair64.set(solSeed32, 0);
+    keypair64.set(pubBytes, 32);
 
     walletAddress = encodeBase58(pubBytes);
     publicKey = walletAddress;
-    privateKey = encodeBase58(solKeyBytes);
+    privateKey = encodeBase58(keypair64);
     explorerUrl = `https://solscan.io/account/${walletAddress}`;
   }
 
@@ -128,6 +133,7 @@ export async function generateColdWallet(options: ColdWalletOptions = {}): Promi
     publicKey,
     privateKey,
     entropyBits,
+    hasPassphrase: passphrase.length > 0,
     explorerUrl,
     createdAt: Date.now(),
   };

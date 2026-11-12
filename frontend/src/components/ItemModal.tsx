@@ -581,7 +581,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                 <div className="input-group" style={{ marginBottom: 0 }}>
                   <label className="input-label">Explorer / DApp URL</label>
                   <input
-                    type="url"
+                    type="text"
+                    inputMode="url"
                     className="input-field"
                     placeholder="https://etherscan.io"
                     value={form.url}
@@ -683,7 +684,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({
               <div className="input-group">
                 <label className="input-label">Service / Endpoint URL (Optional)</label>
                 <input
-                  type="url"
+                  type="text"
+                  inputMode="url"
                   className="input-field"
                   placeholder="https://api.openai.com or https://aws.amazon.com"
                   value={form.url}
@@ -775,7 +777,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({
               <div className="input-group">
                 <label className="input-label">Website URL</label>
                 <input
-                  type="url"
+                  type="text"
+                  inputMode="url"
                   className="input-field"
                   placeholder="https://github.com"
                   value={form.url}

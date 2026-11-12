@@ -339,6 +339,7 @@ export const VaultView: React.FC<VaultViewProps> = ({
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))',
                 gap: '12px',
+                alignItems: 'start',
               }}
             >
               {filteredItems.map(item => (

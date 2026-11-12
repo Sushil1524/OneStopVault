@@ -560,13 +560,20 @@ export const App: React.FC = () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       decrypted: {
-        name: `${wallet.network} Cold Wallet`,
+        name: wallet.hasPassphrase
+          ? `${wallet.network} Cold Wallet (25th Word)`
+          : `${wallet.network} Cold Wallet`,
         walletAddress: wallet.walletAddress,
         seedPhrase: wallet.mnemonic,
         privateKey: wallet.privateKey,
         network: wallet.network,
         derivationPath: wallet.derivationPath,
-        tags: ['Cold Wallet', 'Crypto'],
+        notes: wallet.hasPassphrase
+          ? 'Protected by a BIP-39 25th-word passphrase (not stored here). Both the seed phrase and passphrase are required to restore this address.'
+          : undefined,
+        tags: wallet.hasPassphrase
+          ? ['Cold Wallet', 'Crypto', '25th Word']
+          : ['Cold Wallet', 'Crypto'],
       },
     });
     setIsGeneratorOpen(false);

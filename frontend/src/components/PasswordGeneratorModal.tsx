@@ -84,6 +84,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
   const [walletWordCount, setWalletWordCount] = useState<12 | 18 | 24>(12);
   const [walletNetwork, setWalletNetwork] = useState<CryptoNetworkId>('Ethereum');
   const [walletPassphrase, setWalletPassphrase] = useState<string>('');
+  const [showPassphrase, setShowPassphrase] = useState<boolean>(false);
   const [coldWallet, setColdWallet] = useState<ColdWalletResult | null>(null);
   const [showSeed, setShowSeed] = useState<boolean>(true);
   const [showPrivKey, setShowPrivKey] = useState<boolean>(false);
@@ -142,7 +143,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
     return { label: 'Very Strong', color: '#38bdf8', percent: 100 };
   }, [entropy]);
 
-  const generate = () => {
+  const generate = (forceNewMnemonic: boolean = true) => {
     setIsRotating(true);
     setTimeout(() => setIsRotating(false), 300);
 
@@ -151,6 +152,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
         wordCount: walletWordCount,
         network: walletNetwork,
         passphrase: walletPassphrase,
+        customMnemonic: !forceNewMnemonic && coldWallet ? coldWallet.mnemonic : undefined,
       }).then((wallet) => {
         setColdWallet(wallet);
         setGeneratedValue(wallet.mnemonic);
@@ -245,11 +247,16 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
     emailMode,
     plusEmail,
     domain,
-    // Cold wallet deps
+    // Cold wallet deps (word count generates a fresh mnemonic)
     walletWordCount,
-    walletNetwork,
-    walletPassphrase,
   ]);
+
+  // Re-derive keys from the SAME mnemonic when switching network or editing/clearing the 25th word
+  useEffect(() => {
+    if (isOpen && activeTab === 'wallet' && coldWallet) {
+      generate(false);
+    }
+  }, [walletNetwork, walletPassphrase]);
 
   const handlePrintPaperWallet = () => {
     if (!coldWallet) return;
@@ -407,7 +414,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
 
             <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
               <button
-                onClick={generate}
+                onClick={() => generate(true)}
                 className="btn btn-ghost"
                 style={{ padding: '8px', minHeight: 'auto', transition: 'transform 0.3s ease', transform: isRotating ? 'rotate(180deg)' : 'none' }}
                 title="Regenerate"
@@ -758,6 +765,55 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
                 </div>
               </div>
 
+              {/* Optional BIP-39 "25th Word" Passphrase */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label className="input-label" style={{ marginBottom: 0 }}>
+                    BIP-39 Passphrase (&ldquo;25th Word&rdquo;) — Optional
+                  </label>
+                  {walletPassphrase && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => setWalletPassphrase('')}
+                      style={{ fontSize: '0.68rem', padding: '1px 6px', minHeight: 'auto', color: 'var(--text-muted)' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showPassphrase ? 'text' : 'password'}
+                    className="input-field"
+                    value={walletPassphrase}
+                    onChange={(e) => setWalletPassphrase(e.target.value)}
+                    placeholder="Leave blank for standard seed, or add a secret passphrase..."
+                    autoComplete="off"
+                    spellCheck={false}
+                    style={{ paddingRight: '2.25rem', fontSize: '0.78rem', height: '34px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassphrase((v) => !v)}
+                    className="btn btn-ghost"
+                    aria-label={showPassphrase ? 'Hide passphrase' : 'Show passphrase'}
+                    style={{
+                      position: 'absolute',
+                      right: '4px',
+                      padding: '4px',
+                      minHeight: 'auto',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    {showPassphrase ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+                <p style={{ margin: '4px 0 0', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  Adds an extra secret factor to the seed phrase. Different passphrases derive completely separate wallets.
+                </p>
+              </div>
+
               {/* Numbered Seed Phrase Chip Grid */}
               <div
                 style={{
@@ -811,7 +867,7 @@ export const PasswordGeneratorModal: React.FC<PasswordGeneratorModalProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={generate}
+                      onClick={() => generate(true)}
                       className="btn btn-ghost"
                       style={{ padding: '2px 6px', minHeight: 'auto', transition: 'transform 0.3s ease', transform: isRotating ? 'rotate(180deg)' : 'none' }}
                       title="Generate new phrase"

@@ -49,7 +49,10 @@ A high-security zero-knowledge Credential Manager Vault with an air-gapped cold 
 6. **Built-in TOTP Authenticator**: Generates live 6-digit 2FA codes with 30s countdown rings directly in the vault cards.
 7. **k-Anonymity Leak Auditor**: Audits saved passwords anonymously against HaveIBeenPwned API (sending only 5-char SHA-1 prefix).
 8. **Emergency Recovery Key Download**: Generates downloadable `.txt` recovery key upon registration.
-9. 
+9. **Air-Gapped Cold Wallet Generator**: Derives deterministic BIP-39 mnemonics (12/18/24 words + optional BIP-39 "25th word" passphrase) locally in-browser for Ethereum/EVM (`m/44'/60'/0'/0/0`), Bitcoin Native SegWit & Legacy (`m/84'/0'/0'/0/0` + WIF), and Solana SLIP-0010 Ed25519 (`m/44'/501'/0'/0'`), complete with printable paper wallet export.
+10. **Identity & Alias Generators**: Built-in random/memorable username generator and email alias (`+tag` / catch-all domain) generator alongside the standalone password/passphrase generator.
+11. **Quick PIN, WebAuthn Biometrics & Session Security**: Local key-wrapping for 4–8 digit PIN and platform biometrics (Touch ID / Face ID / Windows Hello), auto-lock on inactivity or tab blur, `"Log Out All Devices"` JWT `token_version` revocation, and permanent account deletion.
+12. **Offline-First PWA & IndexedDB Cache**: Installable Progressive Web App with build-time asset precaching, IndexedDB encrypted vault storage, and an automatic offline sync queue that replays edits/deletes when connectivity returns.
 
 ---
 
@@ -148,10 +151,11 @@ Execute `schema.sql` to initialize SQL tables (`users`, `vault_items`, `vault_me
   npx wrangler d1 execute vault-db --remote --file=schema.sql
   ```
 
-#### Step 5: Set Server Pepper Secret
-Set your server-side pepper secret environment variable in Cloudflare:
+#### Step 5: Set Worker Secrets (`SERVER_PEPPER` & `JWT_SECRET`)
+Set your server-side pepper and JWT signing secrets in Cloudflare:
 ```bash
 npx wrangler secret put SERVER_PEPPER
+npx wrangler secret put JWT_SECRET
 ```
 
 #### Step 6: Deploy to Cloudflare Workers
