@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="OneStop Vault" />
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' fill='%23ffffff'><rect width='512' height='512' rx='128' fill='%23000000'/><path d='M256 64L96 144v112c0 106 68 205 160 232 92-27 160-126 160-232V144L256 64zm0 216c-22 0-40-18-40-40s18-40 40-40 40 18 40 40-18 40-40-40z' fill='%23ffffff'/></svg>" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,16 +24,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-
-    <!-- Register Service Worker for PWA Offline Functionality -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch((err) => {
-            console.log('PWA ServiceWorker registration failed: ', err);
-          });
-        });
-      }
-    </script>
   </body>
 </html>

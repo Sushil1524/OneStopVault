@@ -9,6 +9,7 @@ import { ImportModal } from './components/ImportModal.js';
 import { ExportModal } from './components/ExportModal.js';
 import { QuickUnlockScreen } from './components/QuickUnlockScreen.js';
 import { SecuritySettingsModal } from './components/SecuritySettingsModal.js';
+import { PwaBanner } from './components/PwaBanner.js';
 
 import { UserSession, VaultItem, SyncState, ItemType, DecryptedPayload } from './types/vault.js';
 import { UnifiedStorage } from './storage/unifiedStorage.js';
@@ -82,11 +83,41 @@ export const App: React.FC = () => {
     setSessionNotice(notice ?? null);
   }, []);
 
+  // Initialize IndexedDB storage on startup
+  useEffect(() => {
+    void UnifiedStorage.init();
+  }, []);
+
   // Synchronize local vault with Cloudflare D1 worker
   const performSync = useCallback(
     async (currentSession: UserSession, localItems: VaultItem[]) => {
       setSyncState('SYNCING');
       try {
+        await UnifiedStorage.init();
+
+        // 0. Replay any queued offline saves/deletes first
+        const pendingOps = [...UnifiedStorage.getPendingOps()].sort((a, b) => a.timestamp - b.timestamp);
+        for (const op of pendingOps) {
+          try {
+            if (op.type === 'upsert') {
+              await WorkerClient.saveVaultItem(currentSession.token, op.item);
+            } else {
+              await WorkerClient.deleteVaultItem(currentSession.token, op.id);
+            }
+            UnifiedStorage.removePendingOps([op.id]);
+          } catch (opErr) {
+            if (opErr instanceof AuthRevokedError) {
+              removeQuickPin();
+              removeBiometrics();
+              handleFullLogout(opErr.message);
+              return;
+            }
+            console.warn('Offline queue replay paused (still offline)', opErr);
+            setSyncState('OFFLINE');
+            return;
+          }
+        }
+
         // 1. Calculate local checksum
         const localChecksum = await calculateVaultChecksum(localItems);
 
@@ -158,7 +189,8 @@ export const App: React.FC = () => {
     UnifiedStorage.saveSession(newSession.user, newSession.token);
     setIsLocked(false);
 
-    // 1. Load local cache
+    // 1. Ensure IndexedDB is initialized and load local cache
+    await UnifiedStorage.init();
     const { items: cachedItems } = UnifiedStorage.getLocalVault();
     if (cachedItems.length > 0) {
       const decrypted = await decryptAllItems(cachedItems, newSession.vaultKey);
@@ -225,6 +257,7 @@ export const App: React.FC = () => {
     setIsLocked(false);
 
     // Decrypt cached items with unwrapped key
+    await UnifiedStorage.init();
     const { items: cachedItems } = UnifiedStorage.getLocalVault();
     if (cachedItems.length > 0) {
       const decrypted = await decryptAllItems(cachedItems, unwrappedKey);
@@ -336,7 +369,18 @@ export const App: React.FC = () => {
         handleFullLogout(e.message);
         return;
       }
-      console.warn('Saved locally, background cloud sync pending...', e);
+      console.warn('Saved locally, queued for cloud sync...', e);
+      UnifiedStorage.enqueuePendingOp({
+        type: 'upsert',
+        id: newItem.id,
+        item: {
+          id: newItem.id,
+          ciphertext: newItem.ciphertext,
+          iv: newItem.iv,
+          itemType: newItem.itemType,
+        },
+        timestamp: Date.now(),
+      });
       setSyncState('OFFLINE');
     }
   };
@@ -408,7 +452,12 @@ export const App: React.FC = () => {
         handleFullLogout(e.message);
         return;
       }
-      console.warn('Deleted locally, background sync pending...', e);
+      console.warn('Deleted locally, queued for cloud sync...', e);
+      UnifiedStorage.enqueuePendingOp({
+        type: 'delete',
+        id,
+        timestamp: Date.now(),
+      });
       setSyncState('OFFLINE');
     }
   };
@@ -469,7 +518,15 @@ export const App: React.FC = () => {
         handleFullLogout(e.message);
         return;
       }
-      console.warn('Batch trash empty error', e);
+      console.warn('Batch trash empty queued for cloud sync...', e);
+      const now = Date.now();
+      for (const item of trashItems) {
+        UnifiedStorage.enqueuePendingOp({
+          type: 'delete',
+          id: item.id,
+          timestamp: now,
+        });
+      }
       setSyncState('OFFLINE');
     }
   };
@@ -557,6 +614,26 @@ export const App: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [session, isLocked, handleLock]);
+
+  // Automatic online/offline detection & pending sync replay
+  useEffect(() => {
+    const handleOffline = () => {
+      if (session) setSyncState('OFFLINE');
+    };
+
+    const handleOnline = () => {
+      if (session && !isLocked) {
+        void performSync(session, items);
+      }
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [session, isLocked, items, performSync]);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -654,6 +731,8 @@ export const App: React.FC = () => {
           onDeleteAccount={handleDeleteAccount}
         />
       )}
+
+      <PwaBanner />
     </div>
   );
 };
