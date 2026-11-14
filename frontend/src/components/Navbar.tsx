@@ -94,8 +94,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <Download size={14} /> Export
                   </button>
                 )}
-                <button onClick={onOpenBreachAudit} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
-                  <ShieldAlert size={14} color="var(--accent-amber)" /> Breach Audit
+                <button onClick={onOpenBreachAudit} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }} title="Security Health Dashboard & Breach Audit">
+                  <ShieldAlert size={14} color="var(--accent-amber)" /> Vault Health
                 </button>
                 {onOpenSecurity && (
                   <button onClick={onOpenSecurity} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }} title="Security & Quick Unlock">
@@ -201,7 +201,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
 
           <button onClick={() => { onOpenBreachAudit(); setMenuOpen(false); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 14px', fontSize: '0.875rem' }}>
-            <ShieldAlert size={16} color="var(--accent-amber)" /> Breach Audit
+            <ShieldAlert size={16} color="var(--accent-amber)" /> Vault Health Dashboard
           </button>
 
           {onOpenSecurity && (

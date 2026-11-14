@@ -17,8 +17,15 @@ import {
   Copy,
   Check,
   AlertTriangle,
+  History,
+  Clock,
+  Paperclip,
+  FileCode,
+  Sliders,
+  Download,
+  Upload,
 } from 'lucide-react';
-import { ItemType, DecryptedPayload, VaultItem } from '../types/vault.js';
+import { ItemType, DecryptedPayload, VaultItem, PasswordHistoryEntry, CustomField, EncryptedAttachment, CustomFieldType } from '../types/vault.js';
 import { checkPasswordBreach } from '../crypto/hibp.js';
 import { GeneratorTab } from './PasswordGeneratorModal.js';
 import { generateColdWallet } from '../crypto/coldWalletGenerator.js';
@@ -88,6 +95,20 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   const [copiedSeed, setCopiedSeed] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
 
+  // Password History State
+  const [passwordHistory, setPasswordHistory] = useState<PasswordHistoryEntry[]>([]);
+  const [showPasswordHistory, setShowPasswordHistory] = useState(false);
+  const [copiedHistoryIdx, setCopiedHistoryIdx] = useState<number | null>(null);
+
+  // Custom Fields State
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [showCustomSecretId, setShowCustomSecretId] = useState<Record<string, boolean>>({});
+  const [copiedFieldId, setCopiedFieldId] = useState<string | null>(null);
+
+  // Attachments State
+  const [attachments, setAttachments] = useState<EncryptedAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
   const isItemDeleted = !!initialItem?.decrypted?.deletedAt;
 
   useEffect(() => {
@@ -111,16 +132,24 @@ export const ItemModal: React.FC<ItemModalProps> = ({
         favorite: !!d.favorite,
         tags: Array.isArray(d.tags) ? d.tags : [],
       });
+      setPasswordHistory(Array.isArray(d.passwordHistory) ? d.passwordHistory : []);
+      setCustomFields(Array.isArray(d.customFields) ? d.customFields : []);
+      setAttachments(Array.isArray(d.attachments) ? d.attachments : []);
     } else {
       setItemType('login');
       setForm(EMPTY_FORM);
+      setPasswordHistory([]);
+      setCustomFields([]);
+      setAttachments([]);
     }
     setBreachCount(null);
     setShowPassword(false);
     setShowSecret(false);
     setShowSeedPhrase(false);
     setShowPrivateKey(false);
+    setShowPasswordHistory(false);
     setCustomTagInput('');
+    setAttachmentError(null);
     setCopiedSecret(false);
     setCopiedAddress(false);
     setCopiedSeed(false);
@@ -165,11 +194,122 @@ export const ItemModal: React.FC<ItemModalProps> = ({
     setTimeout(() => setCopiedSecret(false), 2000);
   };
 
+  const handleCopyHistoryPassword = (pass: string, idx: number) => {
+    navigator.clipboard.writeText(pass);
+    setCopiedHistoryIdx(idx);
+    setTimeout(() => setCopiedHistoryIdx(null), 2000);
+  };
+
+  const handleRestoreHistoryPassword = (pass: string) => {
+    setForm(p => ({ ...p, password: pass }));
+  };
+
+  const handleClearHistory = () => {
+    if (confirm('Clear password history for this item?')) {
+      setPasswordHistory([]);
+    }
+  };
+
+  // Custom Fields Handlers
+  const handleAddCustomField = (type: CustomFieldType = 'text') => {
+    const defaultLabel =
+      type === 'ssh_key' ? 'SSH Key' :
+      type === 'pem_cert' ? 'SSL/TLS Certificate' :
+      type === 'hidden' ? 'Secret Key' : 'Custom Field';
+
+    setCustomFields(prev => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        label: defaultLabel,
+        value: '',
+        type,
+      },
+    ]);
+  };
+
+  const handleUpdateCustomField = (id: string, updates: Partial<CustomField>) => {
+    setCustomFields(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
+  };
+
+  const handleRemoveCustomField = (id: string) => {
+    setCustomFields(prev => prev.filter(f => f.id !== id));
+  };
+
+  const handleCopyCustomField = (id: string, val: string) => {
+    navigator.clipboard.writeText(val);
+    setCopiedFieldId(id);
+    setTimeout(() => setCopiedFieldId(null), 2000);
+  };
+
+  // Attachment Handlers
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setAttachmentError(null);
+    const MAX_SIZE = 500 * 1024; // 500 KB limit per file
+    if (file.size > MAX_SIZE) {
+      setAttachmentError(`File "${file.name}" is too large (${(file.size / 1024).toFixed(1)} KB). Maximum allowed size is 500 KB.`);
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const newAttachment: EncryptedAttachment = {
+        id: crypto.randomUUID(),
+        name: file.name,
+        size: file.size,
+        type: file.type || file.name.split('.').pop() || 'application/octet-stream',
+        dataBase64: result,
+        uploadedAt: Date.now(),
+      };
+      setAttachments(prev => [...prev, newAttachment]);
+      e.target.value = '';
+    };
+    reader.onerror = () => {
+      setAttachmentError('Failed to read file.');
+      e.target.value = '';
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDownloadAttachment = (att: EncryptedAttachment) => {
+    const link = document.createElement('a');
+    link.href = att.dataBase64;
+    link.download = att.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return;
     setSaving(true);
     try {
+      // Manage password history on update
+      let updatedHistory = passwordHistory;
+      if (itemType === 'login' && initialItem?.decrypted?.password) {
+        const oldPass = initialItem.decrypted.password;
+        if (oldPass && form.password && oldPass !== form.password) {
+          const newEntry: PasswordHistoryEntry = {
+            password: oldPass,
+            changedAt: Date.now(),
+          };
+          updatedHistory = [newEntry, ...passwordHistory.filter(h => h.password !== oldPass)].slice(0, 5);
+        }
+      }
+
+      // Filter out completely blank custom fields
+      const validCustomFields = customFields.filter(f => f.label.trim() !== '' || f.value.trim() !== '');
+
       const payload: DecryptedPayload = {
         name: form.name.trim(),
         notes: form.notes,
@@ -180,6 +320,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
           password: form.password,
           url: form.url,
           totpSecret: form.totpSecret,
+          ...(updatedHistory.length > 0 && { passwordHistory: updatedHistory }),
         }),
         ...(itemType === 'secret' && {
           secretValue: form.secretValue,
@@ -194,6 +335,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({
           derivationPath: form.derivationPath,
           url: form.url,
         }),
+        ...(validCustomFields.length > 0 && { customFields: validCustomFields }),
+        ...(attachments.length > 0 && { attachments }),
         ...(initialItem?.decrypted?.deletedAt ? { deletedAt: initialItem.decrypted.deletedAt } : {}),
       };
       await onSave({ id: initialItem?.id, itemType, payload });
@@ -772,6 +915,94 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* Password History Per Item */}
+                {passwordHistory.length > 0 && (
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswordHistory(v => !v)}
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 6px', fontSize: '0.75rem', gap: '4px', color: '#38bdf8' }}
+                      >
+                        <History size={13} />
+                        <span>Previous Passwords ({passwordHistory.length})</span>
+                      </button>
+                      {showPasswordHistory && (
+                        <button
+                          type="button"
+                          onClick={handleClearHistory}
+                          className="btn btn-ghost"
+                          style={{ padding: '2px 6px', fontSize: '0.7rem', color: 'var(--text-dim)' }}
+                        >
+                          Clear History
+                        </button>
+                      )}
+                    </div>
+
+                    {showPasswordHistory && (
+                      <div
+                        style={{
+                          marginTop: '6px',
+                          background: 'rgba(0, 0, 0, 0.4)',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-color)',
+                          padding: '8px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                        }}
+                      >
+                        {passwordHistory.map((h, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              fontSize: '0.75rem',
+                              padding: '5px 8px',
+                              borderRadius: '6px',
+                              background: 'rgba(255, 255, 255, 0.03)',
+                              border: '1px solid rgba(255, 255, 255, 0.05)',
+                            }}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                              <span className="mono" style={{ color: 'var(--text-main)', letterSpacing: '0.5px' }}>
+                                {h.password.length > 8 ? `${h.password.slice(0, 3)}••••${h.password.slice(-3)}` : '••••••••'}
+                              </span>
+                              <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                <Clock size={10} />
+                                {new Date(h.changedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyHistoryPassword(h.password, idx)}
+                                className="btn btn-ghost"
+                                style={{ padding: '3px 6px', fontSize: '0.72rem', minHeight: 'auto' }}
+                                title="Copy previous password"
+                              >
+                                {copiedHistoryIdx === idx ? <Check size={12} color="var(--accent-emerald)" /> : <Copy size={12} />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreHistoryPassword(h.password)}
+                                className="btn btn-secondary"
+                                style={{ padding: '3px 8px', fontSize: '0.7rem', minHeight: 'auto' }}
+                                title="Restore this password"
+                              >
+                                Restore
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="input-group">
@@ -799,6 +1030,228 @@ export const ItemModal: React.FC<ItemModalProps> = ({
               </div>
             </>
           )}
+
+          {/* ──────────────── Custom Fields ──────────────── */}
+          <div className="input-group">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '5px', margin: 0 }}>
+                <Sliders size={13} /> Custom Fields (SSH Keys, Certs, Extra Secrets)
+              </label>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <button
+                  type="button"
+                  onClick={() => handleAddCustomField('text')}
+                  className="btn btn-ghost"
+                  style={{ padding: '2px 7px', fontSize: '0.72rem' }}
+                >
+                  + Text
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddCustomField('hidden')}
+                  className="btn btn-ghost"
+                  style={{ padding: '2px 7px', fontSize: '0.72rem', color: 'var(--accent-amber)' }}
+                >
+                  + Secret
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddCustomField('ssh_key')}
+                  className="btn btn-ghost"
+                  style={{ padding: '2px 7px', fontSize: '0.72rem', color: '#38bdf8' }}
+                >
+                  + SSH Key
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddCustomField('pem_cert')}
+                  className="btn btn-ghost"
+                  style={{ padding: '2px 7px', fontSize: '0.72rem', color: '#a855f7' }}
+                >
+                  + Cert / PEM
+                </button>
+              </div>
+            </div>
+
+            {customFields.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
+                {customFields.map((field) => (
+                  <div
+                    key={field.id}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      padding: '8px 10px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        className="input-field"
+                        style={{ padding: '4px 8px', fontSize: '0.78rem', height: '28px', flex: 1 }}
+                        placeholder="Field Name (e.g. Server PIN, API Subkey)"
+                        value={field.label}
+                        onChange={e => handleUpdateCustomField(field.id, { label: e.target.value })}
+                      />
+                      <select
+                        className="input-field"
+                        style={{ padding: '4px 8px', fontSize: '0.75rem', height: '28px', width: '130px' }}
+                        value={field.type || 'text'}
+                        onChange={e => handleUpdateCustomField(field.id, { type: e.target.value as CustomFieldType })}
+                      >
+                        <option value="text">Plain Text</option>
+                        <option value="hidden">Hidden Secret</option>
+                        <option value="ssh_key">SSH Key</option>
+                        <option value="pem_cert">PEM / Cert</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCustomField(field.id)}
+                        className="btn btn-ghost"
+                        style={{ padding: '4px', minHeight: 'auto', color: 'var(--accent-rose)' }}
+                        title="Remove field"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+
+                    <div style={{ position: 'relative' }}>
+                      {field.type === 'ssh_key' || field.type === 'pem_cert' ? (
+                        <textarea
+                          rows={3}
+                          className="input-field mono"
+                          style={{ fontSize: '0.75rem', padding: '6px 8px', resize: 'vertical' }}
+                          placeholder={field.type === 'ssh_key' ? 'ssh-ed25519 AAAAC3NzaC1... or -----BEGIN OPENSSH PRIVATE KEY-----' : '-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----'}
+                          value={field.value}
+                          onChange={e => handleUpdateCustomField(field.id, { value: e.target.value })}
+                        />
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                          <input
+                            type={field.type === 'hidden' && !showCustomSecretId[field.id] ? 'password' : 'text'}
+                            className={`input-field ${field.type === 'hidden' ? 'mono' : ''}`}
+                            style={{ fontSize: '0.78rem', padding: '5px 8px', paddingRight: field.type === 'hidden' ? '54px' : '30px' }}
+                            placeholder={field.type === 'hidden' ? 'Secret value...' : 'Field value...'}
+                            value={field.value}
+                            onChange={e => handleUpdateCustomField(field.id, { value: e.target.value })}
+                          />
+                          <div style={{ position: 'absolute', right: '4px', display: 'flex', gap: '2px' }}>
+                            {field.type === 'hidden' && (
+                              <button
+                                type="button"
+                                onClick={() => setShowCustomSecretId(p => ({ ...p, [field.id]: !p[field.id] }))}
+                                className="btn btn-ghost"
+                                style={{ padding: '3px', minHeight: 'auto' }}
+                              >
+                                {showCustomSecretId[field.id] ? <EyeOff size={13} /> : <Eye size={13} />}
+                              </button>
+                            )}
+                            {field.value && (
+                              <button
+                                type="button"
+                                onClick={() => handleCopyCustomField(field.id, field.value)}
+                                className="btn btn-ghost"
+                                style={{ padding: '3px', minHeight: 'auto' }}
+                                title="Copy value"
+                              >
+                                {copiedFieldId === field.id ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ──────────────── Encrypted File Attachments ──────────────── */}
+          <div className="input-group">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '5px', margin: 0 }}>
+                <Paperclip size={13} /> Encrypted Attachments (JSON Keystores, .pem, .env)
+              </label>
+              <label
+                className="btn btn-secondary"
+                style={{ padding: '2px 8px', fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+              >
+                <Upload size={12} />
+                <span>Add File</span>
+                <input
+                  type="file"
+                  onChange={handleFileUpload}
+                  style={{ display: 'none' }}
+                />
+              </label>
+            </div>
+
+            {attachmentError && (
+              <div style={{ color: 'var(--accent-rose)', fontSize: '0.75rem', marginBottom: '6px' }}>
+                {attachmentError}
+              </div>
+            )}
+
+            {attachments.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                {attachments.map((att) => (
+                  <div
+                    key={att.id}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      padding: '6px 10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                      <FileCode size={15} color="#38bdf8" style={{ flexShrink: 0 }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {att.name}
+                        </span>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
+                          {(att.size / 1024).toFixed(1)} KB · {new Date(att.uploadedAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadAttachment(att)}
+                        className="btn btn-ghost"
+                        style={{ padding: '4px', minHeight: 'auto', color: 'var(--accent-primary)' }}
+                        title="Download attachment"
+                      >
+                        <Download size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAttachment(att.id)}
+                        className="btn btn-ghost"
+                        style={{ padding: '4px', minHeight: 'auto', color: 'var(--accent-rose)' }}
+                        title="Remove attachment"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', margin: 0 }}>
+                End-to-end encrypted with your Vault Key. Great for JSON keystores, SSL certs, and SSH keys (&lt;500 KB per file).
+              </p>
+            )}
+          </div>
 
           {/* ──────────────── Category Tags ──────────────── */}
           <div className="input-group">

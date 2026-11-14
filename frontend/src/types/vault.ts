@@ -1,6 +1,29 @@
 // Vault item types — login (with optional 2FA), secure note, developer secret, or crypto wallet
 export type ItemType = 'login' | 'note' | 'secret' | 'wallet';
 
+export interface PasswordHistoryEntry {
+  password: string;
+  changedAt: number; // Timestamp (ms) when this password was replaced
+}
+
+export type CustomFieldType = 'text' | 'hidden' | 'ssh_key' | 'pem_cert';
+
+export interface CustomField {
+  id: string;
+  label: string;
+  value: string;
+  type?: CustomFieldType;
+}
+
+export interface EncryptedAttachment {
+  id: string;
+  name: string;
+  size: number; // in bytes
+  type: string; // MIME type or extension label
+  dataBase64: string; // Base64 data string
+  uploadedAt: number;
+}
+
 // The decrypted contents of a vault item (stored in browser RAM only)
 export interface DecryptedPayload {
   name: string;
@@ -22,6 +45,15 @@ export interface DecryptedPayload {
   privateKey?: string;     // Raw hex or Base58 private key
   network?: string;        // Blockchain network (e.g. Ethereum, Bitcoin, Solana, Polygon, etc.)
   derivationPath?: string; // Derivation path (e.g. m/44'/60'/0'/0/0)
+
+  // Password History (previous 3–5 passwords)
+  passwordHistory?: PasswordHistoryEntry[];
+
+  // Custom Fields (arbitrary keys, certs, tokens, hidden fields)
+  customFields?: CustomField[];
+
+  // Small Encrypted File Attachments (JSON keystores, .pem certs, .env files)
+  attachments?: EncryptedAttachment[];
 
   // Soft Delete / Trash Recovery
   deletedAt?: number;   // Timestamp (ms) when item was moved to trash; undefined if active

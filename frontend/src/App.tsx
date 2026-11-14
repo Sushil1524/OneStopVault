@@ -407,6 +407,9 @@ export const App: React.FC = () => {
         network: item.network,
         derivationPath: item.derivationPath,
         tags: item.tags,
+        passwordHistory: item.passwordHistory,
+        customFields: item.customFields,
+        attachments: item.attachments,
       };
 
       const { ciphertext, iv } = await encryptVaultItem(payload, session.vaultKey);
@@ -714,6 +717,11 @@ export const App: React.FC = () => {
         isOpen={isBreachAuditOpen}
         onClose={() => setIsBreachAuditOpen(false)}
         items={items.filter(i => !i.decrypted?.deletedAt)}
+        onEditItem={(item) => {
+          setIsBreachAuditOpen(false);
+          setEditingItem(item);
+          setIsItemModalOpen(true);
+        }}
       />
 
       <ImportModal

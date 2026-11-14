@@ -13,7 +13,7 @@
  * ZERO DATA IS TRANSMITTED UNTIL ENCRYPTED WITH USER'S MASTER KEY.
  */
 
-import { ItemType } from '../../types/vault.js';
+import { ItemType, PasswordHistoryEntry, CustomField, EncryptedAttachment } from '../../types/vault.js';
 
 export interface ImportResultItem {
   name: string;
@@ -31,6 +31,9 @@ export interface ImportResultItem {
   privateKey?: string;
   network?: string;
   derivationPath?: string;
+  passwordHistory?: PasswordHistoryEntry[];
+  customFields?: CustomField[];
+  attachments?: EncryptedAttachment[];
 }
 
 export interface ParseOutcome {
@@ -208,6 +211,9 @@ function parseOsvaultItems(payload: any): ParseOutcome {
     privateKey: i.privateKey,
     network: i.network,
     derivationPath: i.derivationPath,
+    passwordHistory: Array.isArray(i.passwordHistory) ? i.passwordHistory : undefined,
+    customFields: Array.isArray(i.customFields) ? i.customFields : undefined,
+    attachments: Array.isArray(i.attachments) ? i.attachments : undefined,
     tags: sanitizeTags([...(i.tags || []), 'Imported']),
     itemType: (i.itemType || (i.walletAddress || i.seedPhrase ? 'wallet' : (i.secretValue ? 'secret' : (i.password ? 'login' : 'note')))) as ItemType,
   }));

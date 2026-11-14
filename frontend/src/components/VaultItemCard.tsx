@@ -16,6 +16,11 @@ import {
   Trash2,
   AlertTriangle,
   Wallet,
+  History,
+  Paperclip,
+  FileCode,
+  Sliders,
+  Download,
 } from 'lucide-react';
 import { VaultItem } from '../types/vault.js';
 import { generateTOTP } from '../crypto/totp.js';
@@ -123,6 +128,31 @@ export const VaultItemCard: React.FC<VaultItemCardProps> = ({
   const [showSecret, setShowSecret] = useState(false);
   const [showSeed, setShowSeed] = useState(false);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [copiedHistoryIdx, setCopiedHistoryIdx] = useState<number | null>(null);
+  const [showCustomSecrets, setShowCustomSecrets] = useState<Record<string, boolean>>({});
+  const [copiedCustomId, setCopiedCustomId] = useState<string | null>(null);
+
+  const handleCopyHistory = (text: string, idx: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedHistoryIdx(idx);
+    setTimeout(() => setCopiedHistoryIdx(null), 2000);
+  };
+
+  const handleCopyCustom = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCustomId(id);
+    setTimeout(() => setCopiedCustomId(null), 2000);
+  };
+
+  const handleDownloadAttachment = (att: { name: string; dataBase64: string }) => {
+    const link = document.createElement('a');
+    link.href = att.dataBase64;
+    link.download = att.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
   const userCopy = useCopyButton();
   const passCopy = useCopyButton();
   const secretCopy = useCopyButton();
@@ -798,6 +828,66 @@ export const VaultItemCard: React.FC<VaultItemCardProps> = ({
                 </div>
               )}
 
+              {/* Password History Drawer */}
+              {payload.passwordHistory && payload.passwordHistory.length > 0 && (
+                <div style={{ padding: '2px 0' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowHistory(v => !v)}
+                    className="btn btn-ghost"
+                    style={{ padding: '2px 0', fontSize: '0.72rem', color: '#38bdf8', gap: '4px', minHeight: 'auto' }}
+                  >
+                    <History size={12} />
+                    <span>Previous Passwords ({payload.passwordHistory.length})</span>
+                  </button>
+
+                  {showHistory && (
+                    <div
+                      style={{
+                        marginTop: '4px',
+                        background: 'rgba(0,0,0,0.4)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        padding: '6px 8px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                      }}
+                    >
+                      {payload.passwordHistory.map((h, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            fontSize: '0.72rem',
+                          }}
+                        >
+                          <span className="mono" style={{ color: 'var(--text-main)' }}>
+                            {h.password.length > 8 ? `${h.password.slice(0, 3)}••••${h.password.slice(-3)}` : '••••••••'}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>
+                              {new Date(h.changedAt).toLocaleDateString()}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyHistory(h.password, idx)}
+                              className="btn btn-ghost"
+                              style={{ padding: '2px 4px', minHeight: 'auto' }}
+                              title="Copy previous password"
+                            >
+                              {copiedHistoryIdx === idx ? <Check size={11} color="var(--accent-emerald)" /> : <Copy size={11} />}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {safeUrl && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', flexShrink: 0 }}>
@@ -863,6 +953,126 @@ export const VaultItemCard: React.FC<VaultItemCardProps> = ({
                 </div>
               )}
             </>
+          )}
+
+          {/* Custom Fields */}
+          {payload.customFields && payload.customFields.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Sliders size={11} /> Custom Fields ({payload.customFields.length})
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {payload.customFields.map(field => {
+                  const isHidden = field.type === 'hidden';
+                  const isMonospace = field.type === 'ssh_key' || field.type === 'pem_cert' || isHidden;
+                  const isSecretRevealed = showCustomSecrets[field.id];
+
+                  return (
+                    <div
+                      key={field.id}
+                      style={{
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                          {field.label}
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {field.type && (
+                            <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', textTransform: 'uppercase', padding: '1px 4px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)' }}>
+                              {field.type === 'ssh_key' ? 'SSH' : field.type === 'pem_cert' ? 'CERT' : field.type === 'hidden' ? 'SECRET' : 'TEXT'}
+                            </span>
+                          )}
+                          {isHidden && (
+                            <button
+                              type="button"
+                              onClick={() => setShowCustomSecrets(p => ({ ...p, [field.id]: !p[field.id] }))}
+                              className="btn btn-ghost"
+                              style={{ padding: '2px 4px', minHeight: 'auto' }}
+                            >
+                              {isSecretRevealed ? <EyeOff size={11} /> : <Eye size={11} />}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleCopyCustom(field.id, field.value)}
+                            className="btn btn-ghost"
+                            style={{ padding: '2px 4px', minHeight: 'auto' }}
+                            title="Copy custom field"
+                          >
+                            {copiedCustomId === field.id ? <Check size={11} color="var(--accent-emerald)" /> : <Copy size={11} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div
+                        className={isMonospace ? 'mono' : ''}
+                        style={{
+                          fontSize: '0.78rem',
+                          color: 'var(--text-muted)',
+                          wordBreak: 'break-all',
+                          whiteSpace: field.type === 'ssh_key' || field.type === 'pem_cert' ? 'pre-wrap' : 'normal',
+                          maxHeight: field.type === 'ssh_key' || field.type === 'pem_cert' ? '120px' : undefined,
+                          overflowY: field.type === 'ssh_key' || field.type === 'pem_cert' ? 'auto' : undefined,
+                        }}
+                      >
+                        {isHidden && !isSecretRevealed ? '••••••••••••' : field.value}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Encrypted File Attachments */}
+          {payload.attachments && payload.attachments.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Paperclip size={11} /> Encrypted Attachments ({payload.attachments.length})
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {payload.attachments.map(att => (
+                  <div
+                    key={att.id}
+                    style={{
+                      padding: '5px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(56, 189, 248, 0.05)',
+                      border: '1px solid rgba(56, 189, 248, 0.15)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                      <FileCode size={13} color="#38bdf8" />
+                      <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#f4f4f5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {att.name}
+                      </span>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>
+                        ({(att.size / 1024).toFixed(1)} KB)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadAttachment(att)}
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px', fontSize: '0.72rem', minHeight: 'auto', color: 'var(--accent-primary)', gap: '4px' }}
+                    >
+                      <Download size={12} /> Download
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Note content */}

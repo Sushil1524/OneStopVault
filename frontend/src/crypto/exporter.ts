@@ -203,6 +203,9 @@ async function exportOsvault(items: VaultItem[], content: ExportContent, passwor
         network: d.network,
         derivationPath: d.derivationPath,
         itemType: i.itemType,
+        passwordHistory: d.passwordHistory,
+        customFields: d.customFields,
+        attachments: d.attachments,
       };
     }),
   });
@@ -231,6 +234,15 @@ function exportBitwarden(items: VaultItem[], content: ExportContent): number {
     const customFields: { name: string; value: string; type: number }[] = [];
     if (d.tags) {
       d.tags.forEach(t => customFields.push({ name: 'tag', value: t, type: 0 }));
+    }
+    if (d.customFields) {
+      d.customFields.forEach(cf => {
+        customFields.push({
+          name: cf.label,
+          value: cf.value,
+          type: cf.type === 'hidden' || cf.type === 'ssh_key' || cf.type === 'pem_cert' ? 1 : 0,
+        });
+      });
     }
     if (item.itemType === 'secret') {
       if (d.environment) customFields.push({ name: 'environment', value: d.environment, type: 0 });
